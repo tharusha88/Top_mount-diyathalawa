@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F7F5EF">
+<title>Top Mountain Resort · A hidden sanctuary in the hills of Diyatalawa</title>
+<meta name="description" content="Top Mountain Resort is a 3-acre estate in the cool, pine-covered hills of Diyatalawa, Sri Lanka, with wooden cabanas, a clay-walled mud house, villas and a whole bungalow.">
+<meta property="og:title" content="Top Mountain Resort · Diyatalawa, Sri Lanka">
+<meta property="og:description" content="Timber cabanas, a clay mud house and bright villas on a 3-acre estate in the pine hills of Diyatalawa.">
+<meta property="og:type" content="website">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<script>
+  (function (d) {
+    var h = d.documentElement;
+    h.classList.remove('no-js'); h.classList.add('js');
+    if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      h.classList.add('anim');
+      // never leave content hidden if the animation library fails to load
+      setTimeout(function () { if (!window.__tmrAnim) h.classList.remove('anim'); }, 3500);
+    }
+  })(document);
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- ============ NAVIGATION ============ -->
+<header class="nav" id="nav">
+  <div class="nav__inner">
+    <a class="brand" href="#top" aria-label="Top Mountain Resort, back to top">
+      <svg class="brand__mark" viewBox="0 0 40 40" aria-hidden="true">
+        <circle class="brand__sun" cx="27.5" cy="11.5" r="4"/>
+        <path d="M3.5 31.5 15 15.5l6.4 9 4.3-5.6 10.8 12.6"/>
+        <path d="M15 21.5v10M12.2 25.6 15 22.8l2.8 2.8"/>
+      </svg>
+      <span class="brand__text">
+        <span class="brand__name">Top Mountain</span>
+        <span class="brand__sub">Resort · Diyatalawa</span>
+      </span>
+    </a>
+    <nav class="nav__links" aria-label="Main">
+      <ul>
+        <li><a href="#stay">Stay</a></li>
+        <li><a href="#experiences">Experiences</a></li>
+        <li><a href="#dining">Dining</a></li>
+        <li><a href="#gallery">Gallery</a></li>
+        <li><a href="#location">Location</a></li>
+      </ul>
+    </nav>
+    <div class="nav__actions">
+      <a class="btn btn--nav" href="#book">Book now</a>
+      <button type="button" class="nav__toggle" aria-expanded="false" aria-controls="menu">
+        <span class="nav__toggle-label">Menu</span>
+        <span class="nav__toggle-icon" aria-hidden="true"><i></i><i></i></span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<!-- mobile menu -->
+<div class="menu" id="menu" aria-label="Site menu" inert>
+  <nav aria-label="Mobile">
+    <ol class="menu__links">
+      <li style="--i:0"><a href="#stay"><span>01</span>Stay</a></li>
+      <li style="--i:1"><a href="#experiences"><span>02</span>Experiences</a></li>
+      <li style="--i:2"><a href="#dining"><span>03</span>Dining</a></li>
+      <li style="--i:3"><a href="#gallery"><span>04</span>Gallery</a></li>
+      <li style="--i:4"><a href="#location"><span>05</span>Location</a></li>
+    </ol>
+  </nav>
+  <div class="menu__foot">
+    <a class="btn btn--solid btn--block" href="#book">Book your stay <svg class="i-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></a>
+    <div class="menu__contact">
+      <p class="eyebrow">Hotline</p>
+      <div class="menu__phones" data-contact="phones"></div>
+      <p class="menu__addr" data-contact="address"></p>
+    </div>
+  </div>
+</div>
+
+<main id="main">
+
+<!-- ============ 1. HERO ============ -->
+<section class="hero" id="top" aria-labelledby="hero-title">
+  <div class="hero__media" data-video="hero" data-eager data-priority></div>
+  <div class="hero__scrim" aria-hidden="true"></div>
+
+  <div class="hero__inner">
+    <p class="hero__kicker" data-hero-fade>Your hidden sanctuary <span aria-hidden="true">—</span> Diyatalawa, Sri Lanka</p>
+    <h1 class="hero__title" id="hero-title">
+      <span class="ln"><span>Top Mountain</span></span>
+      <span class="ln"><span><em>Resort</em></span></span>
+    </h1>
+    <p class="hero__lede" data-hero-fade>Timber cabanas, a clay-walled mud house and bright villas on a 3-acre estate in the cool, pine-covered hills of Diyatalawa.</p>
+    <div class="hero__ctas" data-hero-fade>
+      <a class="btn btn--ivory" href="#intro">Explore the resort <svg class="i-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></a>
+      <a class="btn btn--glass" href="#book">Book your stay</a>
+    </div>
+  </div>
+
+  <div class="hero__foot" data-hero-fade>
+    <a class="scroll-cue" href="#intro"><span class="scroll-cue__line" aria-hidden="true"><i></i></span>Scroll to explore</a>
+    <p class="hero__meta" aria-hidden="true">3 acres <i></i> Cabanas <i></i> Mud house <i></i> Villas</p>
+    <button type="button" class="vtoggle" data-vtoggle=".hero__media" aria-pressed="false">
+      <span class="vtoggle__icon" aria-hidden="true"></span><span class="vtoggle__label">Pause video</span>
+    </button>
+  </div>
+</section>
+
+<!-- ============ 2. INTRODUCTION ============ -->
+<section class="intro section" id="intro" aria-labelledby="intro-title">
+  <div class="wrap intro__grid">
+    <header class="intro__head">
+      <p class="eyebrow" data-fade><span class="eyebrow__n">01</span>The estate</p>
+      <h2 class="display intro__title" id="intro-title" data-split>
+        <span class="ln"><span>Leave the city</span></span>
+        <span class="ln"><span><em>below the mist.</em></span></span>
+      </h2>
+    </header>
+    <p class="lede intro__lede" data-fade>Green roofs, hand-cut railings and tea terraces across the valley.</p>
+
+    <!-- all three photos come from the Resources folder (keys in tools/media.config.json) -->
+    <div class="intro__collage">
+      <figure class="intro__a">
+        <div class="frame" data-reveal="clip"><div class="parallax" data-parallax="0.06" data-img="estate-aerial" data-sizes="(min-width: 900px) 66vw, 100vw"></div></div>
+        <figcaption class="cap"><span>Fig. 01</span>The estate from above: cabanas and villas down a wooded slope</figcaption>
+      </figure>
+      <figure class="intro__b" data-drift="70">
+        <div class="frame" data-reveal="clip" data-img="veranda-tables" data-sizes="(min-width: 900px) 24vw, 48vw"></div>
+        <figcaption class="cap"><span>Fig. 02</span>The long veranda</figcaption>
+      </figure>
+      <figure class="intro__c" data-drift="34">
+        <div class="frame" data-reveal="clip" data-img="cabana-forest" data-sizes="(min-width: 900px) 26vw, 48vw"></div>
+        <figcaption class="cap"><span>Fig. 03</span>A wooden cabana among the pines</figcaption>
+      </figure>
+      <p class="intro__vert" aria-hidden="true">Diyatalawa <i></i> Sri Lanka</p>
+    </div>
+
+    <div class="intro__story">
+      <p class="body-copy" data-fade>Top Mountain is a 3-acre estate in the cool, pine-covered hills of Diyatalawa: wooden cabanas, a clay-walled mud house, villas and a whole bungalow, spread down a green hillside. Tea on the balcony, mist lifting off the hills, and a whole estate to wander.</p>
+      <a class="link-arrow" href="#stay" data-fade>See where you'll stay <svg class="i-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></a>
+    </div>
+
+    <dl class="facts">
+      <div data-fade><dt>The estate</dt><dd>3 acres</dd></div>
+      <div data-fade><dt>Ways to stay</dt><dd>6 <small>cabanas, mud house, villas, bungalow</small></dd></div>
+      <div data-fade><dt>Day trips</dt><dd><span data-count="nearby">16</span> <small>places, <span data-km="min">13</span>–<span data-km="max">51</span> km away</small></dd></div>
+    </dl>
+  </div>
+</section>
+
+<!-- ============ 3. DISCOVER ============ -->
+<section class="discover" id="discover" aria-labelledby="discover-title">
+  <div class="discover__pin">
+    <header class="discover__head wrap">
+      <p class="eyebrow" data-fade><span class="eyebrow__n">02</span>From above</p>
+      <h2 class="display" id="discover-title" data-split>
+        <span class="ln"><span>Discover <em>the estate</em></span></span>
+      </h2>
+    </header>
+
+    <div class="discover__frame">
+      <div class="discover__media" data-video="aerial" data-sizes="100vw"></div>
+      <div class="discover__shade" aria-hidden="true"></div>
+      <ol class="discover__chapters">
+        <li class="dchap"><span class="dchap__n">i.</span><h3>Three acres of hillside</h3><p>Cabanas, villas and a mud house spread down a wooded slope, joined by garden paths.</p></li>
+        <li class="dchap"><span class="dchap__n">ii.</span><h3>Pine, mist and tea country</h3><p>The cool hills of Diyatalawa, with tea terraces across the valley and morning mist lifting off the slopes.</p></li>
+        <li class="dchap"><span class="dchap__n">iii.</span><h3>Ella within a day trip</h3><p>Waterfalls, peaks and tea factories, from <span data-km="min">13</span> to <span data-km="max">51</span> km away.</p></li>
+      </ol>
+      <div class="discover__ui">
+        <button type="button" class="btn btn--ivory discover__film" data-film>
+          <span class="play-dot" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5-11-6.5Z"/></svg></span>
+          Watch the film <span class="discover__dur">1:40</span>
+        </button>
+        <button type="button" class="vtoggle vtoggle--dark" data-vtoggle=".discover__media" aria-pressed="false">
+          <span class="vtoggle__icon" aria-hidden="true"></span><span class="vtoggle__label">Pause video</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4. ACCOMMODATION ============ -->
+<section class="stays section" id="stay" aria-labelledby="stay-title">
+  <div class="wrap">
+    <div class="stays__top">
+      <header class="section-head">
+        <p class="eyebrow" data-fade><span class="eyebrow__n">03</span>Accommodation</p>
+        <h2 class="display" id="stay-title" data-split>
+          <span class="ln"><span>Cabana, clay</span></span>
+          <span class="ln"><span><em>or villa.</em></span></span>
+        </h2>
+        <p class="lede section-head__lede" data-fade>Wooden cabanas, a mud house, villas and a whole bungalow, spread across the estate. Pick your hideaway.</p>
+      </header>
+      <aside class="rates" aria-labelledby="rates-title" data-fade>
+        <p class="eyebrow" id="rates-title">Rates at a glance</p>
+        <ol class="rates__list" data-render="rates"></ol>
+        <p class="rates__note" data-render="rates-note"></p>
+      </aside>
+    </div>
+
+    <ol class="rooms" data-render="stays"></ol>
+
+    <div class="amenities">
+      <p class="eyebrow">In every stay</p>
+      <ul class="amenities__list" data-render="amenities"></ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5. EXPERIENCES ============ -->
+<section class="exp section" id="experiences" aria-labelledby="exp-title">
+  <div class="wrap exp__grid">
+    <header class="exp__intro">
+      <p class="eyebrow" data-fade><span class="eyebrow__n">04</span>Experiences</p>
+      <h2 class="display" id="exp-title" data-split>
+        <span class="ln"><span>Slow mornings.</span></span>
+        <span class="ln"><span><em>Long views.</em></span></span>
+      </h2>
+      <p class="lede" data-fade>Tea on the balcony, mist lifting off the hills, and a 3-acre estate to wander.</p>
+    </header>
+    <ol class="exp__list" data-render="experiences"></ol>
+    <div class="exp__stage" aria-hidden="true">
+      <div class="exp__frame" data-render="exp-stage"></div>
+      <p class="exp__count"><b>01</b> / 06</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6. ARCHITECTURE & CRAFT ============ -->
+<section class="craft section" id="craft" aria-labelledby="craft-title">
+  <div class="wrap">
+    <header class="craft__head">
+      <p class="eyebrow" data-fade><span class="eyebrow__n">05</span>Architecture &amp; craft</p>
+      <h2 class="display" id="craft-title" data-split>
+        <span class="ln"><span>Made by <em>hand.</em></span></span>
+      </h2>
+      <p class="lede" data-fade>Nothing here came out of a catalogue. Timber, clay, lantern light and paint, all worked on site.</p>
+    </header>
+    <div class="craft__grid" data-render="craft"></div>
+  </div>
+</section>
+
+<!-- ============ 7. DINING ============ -->
+<section class="dining section" id="dining" aria-labelledby="dining-title">
+  <div class="wrap dining__grid">
+    <figure class="dining__main">
+      <div class="frame" data-reveal="clip"><div class="parallax" data-parallax="0.12" data-img="dining-deck" data-sizes="(min-width: 900px) 60vw, 100vw"></div></div>
+      <figcaption class="cap cap--light"><span>Fig. 03</span>The dining deck, raised above the rooms</figcaption>
+    </figure>
+    <div class="dining__text">
+      <p class="eyebrow eyebrow--light" data-fade><span class="eyebrow__n">06</span>Dining</p>
+      <h2 class="display" id="dining-title" data-split>
+        <span class="ln"><span>A table above</span></span>
+        <span class="ln"><span><em>the trees.</em></span></span>
+      </h2>
+      <p class="lede" data-fade>Sri Lankan curries and international favourites, campfire BBQ and sunset Ceylon tea, with the valley on three sides.</p>
+      <ol class="menu-list" data-render="dining" aria-label="On the table"></ol>
+    </div>
+    <div class="dining__strip">
+      <figure class="dining__s1"><div class="frame" data-reveal="clip" data-img="veranda-tables" data-sizes="(min-width: 900px) 22vw, 50vw"></div></figure>
+      <figure class="dining__s2"><div class="frame" data-reveal="clip" data-img="veranda" data-sizes="(min-width: 900px) 34vw, 100vw"></div></figure>
+      <figure class="dining__s3"><div class="frame" data-reveal="clip" data-img="bbq" data-sizes="(min-width: 900px) 22vw, 50vw"></div></figure>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 8. GALLERY ============ -->
+<section class="gallery section" id="gallery" aria-labelledby="gallery-title">
+  <div class="wrap">
+    <header class="gallery__head">
+      <div>
+        <p class="eyebrow" data-fade><span class="eyebrow__n">07</span>Gallery</p>
+        <h2 class="display" id="gallery-title" data-split>
+          <span class="ln"><span>Moments from</span></span>
+          <span class="ln"><span><em>the hills.</em></span></span>
+        </h2>
+      </div>
+      <p class="gallery__hint" data-fade>Open any photo to see it full screen.</p>
+    </header>
+    <ul class="gallery__grid" data-render="gallery"></ul>
+  </div>
+</section>
+
+<!-- ============ 9. LOCATION & NEARBY ============ -->
+<section class="loc section" id="location" aria-labelledby="loc-title">
+  <div class="wrap loc__top">
+    <div class="loc__head">
+      <p class="eyebrow" data-fade><span class="eyebrow__n">08</span>Location</p>
+      <h2 class="display" id="loc-title" data-split>
+        <span class="ln"><span>Hidden, not hard</span></span>
+        <span class="ln"><span><em>to find.</em></span></span>
+      </h2>
+      <address class="loc__addr" data-contact="address" data-fade></address>
+      <div class="loc__ctas" data-fade>
+        <a class="btn btn--solid" data-contact="maps" href="#" target="_blank" rel="noopener">Get directions <svg class="i-ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16 16.5 7.5M9 7h8v8"/></svg></a>
+        <a class="btn btn--outline" data-contact="tel" href="#">Call <span data-contact="tel-label"></span></a>
+      </div>
+    </div>
+    <dl class="loc__facts" data-render="location"></dl>
+  </div>
+
+  <div class="near">
+    <div class="wrap near__head">
+      <div>
+        <h3 class="display display--sm" data-split>
+          <span class="ln"><span>Waterfalls, peaks</span></span>
+          <span class="ln"><span><em>and tea country.</em></span></span>
+        </h3>
+        <p class="lede" data-fade><span data-count="nearby">16</span> places within a day trip of the resort, from <span data-km="min">13</span> to <span data-km="max">51</span> km away.</p>
+      </div>
+      <div class="near__ctrl">
+        <div class="scale" aria-hidden="true">
+          <span class="scale__lbl">Resort</span>
+          <span class="scale__line"><i class="scale__fill"></i><b class="scale__dot"><em class="scale__km">13 km</em></b></span>
+          <span class="scale__lbl"><span data-km="max">51</span> km</span>
+        </div>
+        <div class="near__btns">
+          <button type="button" class="round-btn" data-rail="-1" aria-label="Previous places"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12H5m5.5-6-6 6 6 6"/></svg></button>
+          <button type="button" class="round-btn" data-rail="1" aria-label="Next places"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <ul class="rail" data-render="nearby" tabindex="0" aria-label="Places near the resort, sorted by distance"></ul>
+    <div class="wrap near__also">
+      <p class="eyebrow">Also close by</p>
+      <ul data-render="also"></ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 10. GUEST REVIEWS (verified only; removed when there are none) ============ -->
+<section class="reviews section" id="reviews" aria-labelledby="reviews-title" data-optional="reviews">
+  <div class="wrap reviews__inner">
+    <p class="eyebrow eyebrow--center">Guests</p>
+    <h2 class="sr-only" id="reviews-title">Guest reviews</h2>
+    <div class="reviews__list" data-render="reviews" aria-live="polite"></div>
+    <div class="reviews__nav">
+      <button type="button" class="round-btn" data-review="-1" aria-label="Previous review"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12H5m5.5-6-6 6 6 6"/></svg></button>
+      <button type="button" class="round-btn" data-review="1" aria-label="Next review"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></button>
+    </div>
+    <a class="link-arrow" data-render="reviews-link" href="#" target="_blank" rel="noopener">Read more reviews <svg class="i-ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16 16.5 7.5M9 7h8v8"/></svg></a>
+  </div>
+</section>
+
+<!-- ============ 11. BOOKING ============ -->
+<section class="book" id="book" aria-labelledby="book-title">
+  <div class="book__grid">
+    <div class="book__media" data-img="cabana-hillside" data-sizes="(min-width: 900px) 42vw, 100vw"></div>
+    <div class="book__panel">
+      <p class="eyebrow eyebrow--light" data-fade>Reservations</p>
+      <h2 class="display" id="book-title" data-split>
+        <span class="ln"><span>The hills</span></span>
+        <span class="ln"><span>are <em>waiting.</em></span></span>
+      </h2>
+      <p class="book__lede" data-fade>Choose your dates and stay, and we'll confirm availability and rates with you directly.</p>
+
+      <form class="bform" novalidate data-fade>
+        <div class="bform__grid">
+          <label class="field">
+            <span class="field__label">Check-in</span>
+            <input type="date" name="checkin" required>
+          </label>
+          <label class="field">
+            <span class="field__label">Check-out</span>
+            <input type="date" name="checkout" required>
+          </label>
+          <div class="field">
+            <span class="field__label" id="adults-l">Adults</span>
+            <div class="stepper" data-min="1" data-max="12">
+              <button type="button" data-step="-1" aria-label="Fewer adults">−</button>
+              <input type="number" name="adults" value="2" min="1" max="12" inputmode="numeric" aria-labelledby="adults-l">
+              <button type="button" data-step="1" aria-label="More adults">+</button>
+            </div>
+          </div>
+          <div class="field">
+            <span class="field__label" id="children-l">Children</span>
+            <div class="stepper" data-min="0" data-max="6">
+              <button type="button" data-step="-1" aria-label="Fewer children">−</button>
+              <input type="number" name="children" value="0" min="0" max="6" inputmode="numeric" aria-labelledby="children-l">
+              <button type="button" data-step="1" aria-label="More children">+</button>
+            </div>
+          </div>
+          <label class="field field--wide">
+            <span class="field__label">Accommodation</span>
+            <span class="select">
+              <select name="stay" data-render="stay-options">
+                <option value="">Any stay</option>
+              </select>
+            </span>
+          </label>
+        </div>
+        <button class="btn btn--ivory btn--block bform__submit" type="submit">Check availability <svg class="i-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></button>
+        <p class="bform__error" role="alert"></p>
+      </form>
+
+      <div class="bresult" hidden tabindex="-1">
+        <p class="eyebrow eyebrow--light">Your enquiry</p>
+        <p class="bresult__summary"></p>
+        <p class="bresult__note">To confirm, call or message the resort with these details.</p>
+        <div class="bresult__actions">
+          <a class="btn btn--ivory" data-contact="tel" href="#">Call <span data-contact="tel-label"></span></a>
+          <a class="btn btn--glass bresult__wa" data-contact="whatsapp" href="#" target="_blank" rel="noopener">Send on WhatsApp</a>
+          <button type="button" class="link-arrow link-arrow--light bresult__edit">Change details</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ============ 12. FOOTER ============ -->
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot__cta">
+      <p class="foot__line">Spend your next getaway <em>with us.</em></p>
+      <a class="btn btn--solid" href="#book">Book your stay <svg class="i-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></a>
+    </div>
+    <div class="foot__cols">
+      <div class="foot__brand">
+        <p class="foot__name">Top Mountain Resort</p>
+        <p>Your hidden sanctuary in the pine hills of Diyatalawa.</p>
+      </div>
+      <nav class="foot__col" aria-label="Footer">
+        <h3>Explore</h3>
+        <a href="#stay">Stay</a><a href="#experiences">Experiences</a><a href="#craft">Craft</a><a href="#dining">Dining</a><a href="#gallery">Gallery</a><a href="#location">Location</a>
+      </nav>
+      <div class="foot__col">
+        <h3>Hotline</h3>
+        <div data-contact="phones"></div>
+        <a data-contact="whatsapp" href="#" target="_blank" rel="noopener">WhatsApp</a>
+      </div>
+      <div class="foot__col">
+        <h3>Visit</h3>
+        <address data-contact="address"></address>
+        <a class="link-arrow" data-contact="maps" href="#" target="_blank" rel="noopener">Get directions <svg class="i-ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16 16.5 7.5M9 7h8v8"/></svg></a>
+      </div>
+      <div class="foot__col" data-optional="socials">
+        <h3>Follow</h3>
+        <div data-contact="socials"></div>
+      </div>
+    </div>
+  </div>
+  <p class="foot__mark" aria-hidden="true">Top Mountain</p>
+  <div class="wrap foot__legal">
+    <p>© <span data-year>2026</span> Top Mountain Resort · Diyatalawa, Sri Lanka</p>
+    <a href="#top" class="foot__top">Back to top ↑</a>
+  </div>
+</footer>
+
+<!-- mobile booking bar -->
+<div class="mbar" aria-label="Quick booking">
+  <a class="btn btn--solid mbar__book" href="#book">Book your stay</a>
+  <a class="mbar__call" data-contact="tel" href="#" aria-label="Call the resort">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 3.5h3l1.6 4.3-2 1.3a11 11 0 0 0 6.8 6.8l1.3-2 4.3 1.6v3a2 2 0 0 1-2.2 2A17.5 17.5 0 0 1 3.5 5.7a2 2 0 0 1 2-2.2Z"/></svg>
+  </a>
+</div>
+
+<!-- lightbox -->
+<div class="lb" id="lightbox" role="dialog" aria-modal="true" aria-labelledby="lb-title" tabindex="-1" hidden>
+  <div class="lb__bg"></div>
+  <div class="lb__stage">
+    <img class="lb__img" alt="">
+    <video class="lb__video" controls playsinline loop muted hidden></video>
+  </div>
+  <div class="lb__top">
+    <p class="lb__count"><b>01</b> / <span>12</span></p>
+    <button type="button" class="lb__close">Close <span aria-hidden="true">✕</span></button>
+  </div>
+  <div class="lb__bottom">
+    <div class="lb__cap">
+      <p class="lb__meta"></p>
+      <h2 class="lb__title" id="lb-title"></h2>
+      <p class="lb__desc"></p>
+      <a class="link-arrow link-arrow--light lb__link" href="#" target="_blank" rel="noopener" hidden>Directions <svg class="i-ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16 16.5 7.5M9 7h8v8"/></svg></a>
+    </div>
+    <div class="lb__nav">
+      <button type="button" class="round-btn round-btn--light lb__prev" aria-label="Previous"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12H5m5.5-6-6 6 6 6"/></svg></button>
+      <button type="button" class="round-btn round-btn--light lb__next" aria-label="Next"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></button>
+    </div>
+  </div>
+</div>
+
+<!-- film -->
+<div class="film" id="film" role="dialog" aria-modal="true" aria-label="Top Mountain Resort film" hidden>
+  <div class="film__bg"></div>
+  <video class="film__video" controls playsinline preload="none"></video>
+  <button type="button" class="film__close">Close <span aria-hidden="true">✕</span></button>
+</div>
+
+<script src="js/data/media.js"></script>
+<script src="js/data/content.js"></script>
+<script src="js/media.js"></script>
+<script src="js/render.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

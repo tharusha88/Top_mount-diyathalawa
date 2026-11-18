@@ -1,0 +1,122 @@
+{
+  "_comment": "Single source of truth for every photo and video on the site. Edit this file, then run: python tools/build_media.py. The site never references media files directly; it reads the generated js/data/media.js by key.",
+
+  "sources": {
+    "res": "D:/Projects/New folder/Resourses",
+    "legacy": "D:/Projects/top-mountain-resort/assets"
+  },
+
+  "output": {
+    "images": "assets/media/img",
+    "videos": "assets/media/video",
+    "manifest": "js/data/media.js"
+  },
+
+  "imageWidths": [480, 800, 1200, 1800, 2400],
+  "webpQuality": 72,
+  "jpgQuality": 78,
+  "fallbackWidth": 1200,
+
+  "images": {
+    "hero-poster":      { "frame": "res:main video.mp4", "time": 1.0, "alt": "An A-frame villa above the tea fields, wrapped in morning mist", "pos": "50% 45%" },
+    "hero-poster-tall": { "frame": "res:main video.mp4", "time": 1.0, "crop": [0.3, 0, 0.7, 1], "alt": "An A-frame villa above the tea fields, wrapped in morning mist", "pos": "50% 50%" },
+    "estate-golden":    { "frame": "res:main video.mp4", "time": 88.0, "alt": "Cabanas and villas scattered across the wooded estate in early golden light", "pos": "50% 60%" },
+    "misty-villa":      { "frame": "res:main video.mp4", "time": 3.4, "alt": "Morning mist drifting over the tea slopes beside an A-frame villa", "pos": "50% 45%" },
+    "lawn-court":       { "frame": "res:main video.mp4", "time": 70.0, "alt": "Aerial view of the fenced lawn on the estate, edged by trees", "pos": "55% 50%" },
+    "bungalow-aerial":  { "frame": "res:main video.mp4", "time": 66.0, "alt": "A long white bungalow with a green roof among the trees", "pos": "50% 50%" },
+    "aerial-poster":    { "frame": "res:d11.mp4", "time": 0.4, "alt": "Looking straight down on the estate's green roofs, paths and terraces", "pos": "50% 50%" },
+
+    "cabana-forest":    { "src": "res:004e7efea8d9c963f3a5d911158f51bf.JPG", "alt": "A two-storey wooden cabana with a green roof and branch-rail balcony among the trees", "pos": "45% 45%" },
+    "villa-facade":     { "src": "res:07e1812e9f03c58806fb5d2acb265b35.JPG", "alt": "The white villa building with stacked balconies on a green hillside", "pos": "55% 40%" },
+    "villa-aerial":     { "src": "res:085a1679d1d380d05d87d754c18f0c79.JPG", "alt": "Aerial view of the villa building, its lawn and the forested slope around it", "pos": "55% 45%" },
+    "valley-aerial":    { "src": "res:0d11ac15cc9fb25c47b6a121e2adb053.JPG", "alt": "Aerial view over the Diyatalawa valley, with farm terraces and green roofs among the trees", "pos": "50% 50%" },
+    "cabana-hillside":  { "src": "res:284c38176477adcd9afbba7819add799.JPG", "alt": "The wooden cabana and its timber balcony on the hillside", "pos": "45% 50%" },
+    "villa-drone":      { "src": "res:3d546227f41b2c89c865efd15e53105d.JPG", "alt": "Drone view of the villa building with its green A-frame roof and terraces", "pos": "55% 45%" },
+    "estate-aerial":    { "src": "res:450e32af9c28f03dfc6ce96d4b1fd0d3.JPG", "alt": "The resort's buildings scattered down a wooded hillside, seen from the air", "pos": "50% 45%" },
+    "veranda-tables":   { "src": "res:6200b8a4-088d-4b78-a2c6-9dd357396d9e.jpg", "alt": "A long covered veranda with timber chairs and tables beside the rooms", "pos": "50% 60%" },
+    "cabana-palms":     { "src": "res:94c5b6726ea2e3d464ff4eef95e83ee5.JPG", "alt": "A log cabana with a branch-rail balcony behind young palms, under a blue sky", "pos": "45% 40%" },
+    "timber-stair":     { "src": "res:9cfb4bbf657a25e54761e982bb176da2.JPG", "alt": "Inside a cabana: a hand-built timber staircase, log walls and a carved rock wall", "pos": "45% 50%" },
+    "villa-balcony":    { "src": "res:be7e2b04fd01741dc341526de9e65ec0.JPG", "alt": "A villa balcony opening off a bright room, looking out to the hills", "pos": "45% 50%" },
+    "hillside-house":   { "src": "res:d76ec51a571abb357417af1357022637.JPG", "alt": "A white, green-roofed building set into the forested hillside", "pos": "50% 55%" },
+
+    "cabin-bedroom":    { "src": "legacy:img/cabin-bedroom.jpg", "alt": "A timber-lined cabana bedroom with a double bed, curtains and a hanging lantern", "pos": "50% 55%" },
+    "mud-house":        { "src": "legacy:img/mud-house.jpg", "alt": "The clay-walled Mud House with its lantern-hung veranda", "pos": "45% 55%" },
+    "mud-lounge":       { "src": "legacy:img/mud-lounge.jpg", "alt": "Inside the Mud House: hand-made timber chairs, clay walls and a rock face", "pos": "40% 55%" },
+    "mud-veranda":      { "src": "legacy:img/mud-veranda.jpg", "alt": "Lanterns hanging over the clay veranda of the Mud House", "pos": "50% 45%" },
+    "mural":            { "src": "legacy:img/mural.jpg", "alt": "A hand-painted, fresco-style mural of two figures beside a room entrance", "pos": "60% 50%" },
+    "room-window":      { "src": "legacy:img/room-window.jpg", "alt": "A bright villa room with floor-to-ceiling windows and a small table for two", "pos": "50% 55%" },
+    "room-family":      { "src": "legacy:img/room-family.jpg", "alt": "A villa family room with two beds and a door out to the balcony", "pos": "50% 55%" },
+    "room-twin":        { "src": "legacy:img/room-twin.jpg", "alt": "A twin room with two single beds and striped throws", "pos": "50% 55%" },
+    "balcony":          { "src": "legacy:img/balcony.jpg", "alt": "A balcony with a table for two overlooking the fields", "pos": "50% 60%" },
+    "veranda":          { "src": "legacy:img/veranda.jpg", "alt": "A covered veranda with a long timber table, looking out to the hills", "pos": "50% 55%" },
+    "dining-deck":      { "src": "legacy:img/dining-deck.jpg", "alt": "The open-air dining pavilion, raised above the rooms among palms and trees", "pos": "50% 40%" },
+    "dining-crop":      { "src": "legacy:img/dining-crop.jpg", "alt": "The dining deck among the treetops", "pos": "50% 50%" },
+    "campfire":         { "src": "legacy:img/campfire.jpg", "alt": "Friends around a campfire between two tents, under a sky full of stars", "pos": "50% 60%" },
+    "bbq":              { "src": "legacy:img/family-meal.jpg", "alt": "Food sizzling on a row of grills as friends gather in the smoke and low evening sun", "pos": "50% 55%" },
+    "peacock-poster":   { "src": "legacy:video/peacock-poster.jpg", "alt": "A peacock perched on a balcony rail at the resort", "pos": "50% 50%" },
+
+    "near-idalgashinna":  { "src": "legacy:img/near/idalgashinna-rock.jpg", "alt": "Sunlight through pine trees and mist at Idalgashinna" },
+    "near-adisham":       { "src": "legacy:img/near/adisham-bungalow.jpg", "alt": "The stone Tudor-style Adisham Bungalow with its lawn and rose garden" },
+    "near-tea-factory":   { "src": "legacy:img/near/tea-factory.jpg", "alt": "Two glasses of Ceylon tea held up over a green tea estate" },
+    "near-flying-ravana": { "src": "legacy:img/near/flying-ravana.jpg", "alt": "The Flying Ravana sign and zipline platform on a jungle hillside" },
+    "near-ravana-cave":   { "src": "legacy:img/near/ravana-cave.jpg", "alt": "Looking out from the mouth of Ravana Cave to the jungle" },
+    "near-mahamevnawa":   { "src": "legacy:img/near/mahamevnawa-monastery.jpg", "alt": "A white stupa on a forested ridge at sunrise, with mist in the valleys" },
+    "near-nine-arch":     { "src": "legacy:img/near/nine-arch-bridge.jpg", "alt": "A train crossing the stone Nine Arch Bridge above tea bushes" },
+    "near-ella-rock":     { "src": "legacy:img/near/ella-rock.jpg", "alt": "The green flank of Ella Rock dropping into a hazy valley" },
+    "near-little-adams":  { "src": "legacy:img/near/little-adams-peak.jpg", "alt": "A hiker sitting on a rock at the top of Little Adam's Peak" },
+    "near-ravana-falls":  { "src": "legacy:img/near/ravana-falls.jpg", "alt": "Ravana Falls tumbling down a rocky gorge in the jungle" },
+    "near-liptons":       { "src": "legacy:img/near/liptons-seat.jpg", "alt": "The bronze statue of Thomas Lipton on a bench above a sea of cloud at sunrise" },
+    "near-devils":        { "src": "legacy:img/near/devils-staircase.jpg", "alt": "Open highland grassland under storm clouds" },
+    "near-wangedigala":   { "src": "legacy:img/near/wangedigala-rock.jpg", "alt": "Sunrise over layered hills seen from Wangedigala Rock" },
+    "near-pilkington":    { "src": "legacy:img/near/pilkington-view-point.jpg", "alt": "A lone tree and a thatched hut on a green hilltop in the mist" },
+    "near-diyaluma":      { "src": "legacy:img/near/diyaluma-falls.jpg", "alt": "A natural rock pool at the top of Diyaluma Falls" },
+    "near-bakers-bend":   { "src": "legacy:img/near/bakers-bend.jpg", "alt": "A narrow road winding through steep green hills" }
+  },
+
+  "videos": {
+    "hero": {
+      "src": "res:main video.mp4",
+      "segments": [[0, 4.2], [16.45, 20.4], [81.4, 94.3]],
+      "xfade": 0.9,
+      "audio": false,
+      "poster": "hero-poster",
+      "posterPortrait": "hero-poster-tall",
+      "label": "Drone footage drifting over the resort's villas and cabanas in the Diyatalawa hills",
+      "variants": [
+        { "id": "1080", "role": "landscape", "w": 1920, "h": 1080, "crf": 26, "maxrate": "3.2M" },
+        { "id": "720", "role": "landscape", "w": 1280, "h": 720, "crf": 26, "maxrate": "2.2M" },
+        { "id": "portrait", "role": "portrait", "w": 608, "h": 1080, "focusX": 0.5, "crf": 26, "maxrate": "2M" }
+      ]
+    },
+    "aerial": {
+      "src": "res:d11.mp4",
+      "audio": false,
+      "poster": "aerial-poster",
+      "label": "A drone rising slowly above the estate, looking straight down on its roofs and paths",
+      "variants": [
+        { "id": "1080", "role": "landscape", "w": 1920, "h": 1080, "crf": 25, "maxrate": "4M" },
+        { "id": "720", "role": "landscape", "w": 1280, "h": 720, "crf": 26, "maxrate": "2M" },
+        { "id": "portrait", "role": "portrait", "w": 608, "h": 1080, "focusX": 0.5, "crf": 26, "maxrate": "1.8M" }
+      ]
+    },
+    "film": {
+      "src": "res:main video.mp4",
+      "audio": true,
+      "poster": "estate-golden",
+      "label": "The full drone film of Top Mountain Resort",
+      "variants": [
+        { "id": "1080", "role": "landscape", "w": 1920, "h": 1080, "crf": 26, "maxrate": "3M" },
+        { "id": "720", "role": "landscape", "w": 1280, "h": 720, "crf": 27, "maxrate": "1.6M" }
+      ]
+    },
+    "peacock": {
+      "src": "legacy:video/peacock.mp4",
+      "audio": false,
+      "poster": "peacock-poster",
+      "label": "A peacock on a balcony rail at the resort takes off and flies down to a roof",
+      "variants": [
+        { "id": "portrait", "role": "portrait", "w": 576, "h": 1024, "crf": 27, "maxrate": "1.8M" }
+      ]
+    }
+  }
+}

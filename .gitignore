@@ -1,0 +1,11 @@
+# Local editor/app config (machine-specific paths)
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+
+# OS files
+Thumbs.db
+desktop.ini
+.DS_Store
