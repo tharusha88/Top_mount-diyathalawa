@@ -54,7 +54,7 @@
       navLinks.forEach(a => a.classList.toggle('is-current', a.getAttribute('href') === '#' + e.target.id));
     });
   }, { rootMargin: '-45% 0px -50% 0px' });
-  ['stay', 'experiences', 'craft', 'dining', 'gallery', 'location', 'book', 'intro', 'discover'].forEach(id => { const el = document.getElementById(id); if (el) spy.observe(el); });
+  ['stay', 'experiences', 'location', 'book', 'intro', 'discover'].forEach(id => { const el = document.getElementById(id); if (el) spy.observe(el); });
 
   /* ================= MOBILE MENU ================= */
   const toggle = $('.nav__toggle'), menu = $('#menu');
@@ -112,27 +112,98 @@
   });
 
   /* ================= FILM ================= */
-  const film = $('#film'), filmVideo = $('.film__video', film);
-  let filmReturn = null;
-  const openFilm = () => {
+  // The thumbnail grows into the player on open and shrinks back into place on close.
+  const film = $('#film'), filmVideo = $('.film__video', film), filmBg = $('.film__bg', film), filmTop = $('.film__top', film);
+  let filmReturn = null, filmBusy = false, heldVideos = [];
+  const onScreen = r => !!r && r.width > 0 && r.bottom > 0 && r.top < innerHeight;
+  const flyer = (src, r, radius) => {
+    const fly = document.createElement('img');
+    fly.className = 'lb__fly'; fly.src = src; fly.alt = '';
+    Object.assign(fly.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px', borderRadius: radius });
+    body.appendChild(fly);
+    return fly;
+  };
+  const openFilm = e => {
+    if (filmBusy || !film.hidden) return;
     const src = T.videoSource('film', { getBoundingClientRect: () => ({ width: innerWidth, height: innerWidth * 9 / 16 }) });
     if (!src) return;
-    filmReturn = document.activeElement;
+    const trigger = e.currentTarget;
+    filmReturn = trigger;
     if (filmVideo.dataset.src !== src.src) {
       filmVideo.src = src.src; filmVideo.dataset.src = src.src;
       const poster = T.media.videos.film && T.media.videos.film.poster;
       if (poster) filmVideo.poster = T.best(poster);
     }
+    const thumb = $('img', trigger);
+    const thumbSrc = thumb && (thumb.currentSrc || thumb.src);
+    if (thumbSrc) filmBg.style.setProperty('--film-bg', `url("${thumbSrc}")`);
+    // the background loops rest while the film plays
+    heldVideos = $$('video.bgvideo').filter(v => !v.paused);
+    heldVideos.forEach(v => v.pause());
     film.hidden = false; lockScroll(true);
-    const focusClose = () => $('.film__close', film).focus();
-    if (hasGsap) gsap.fromTo(film, { autoAlpha: 0 }, { autoAlpha: 1, duration: .6, ease: 'power2.out', onComplete: focusClose });
-    else focusClose();
-    filmVideo.play().catch(() => {});
+    filmVideo.play().catch(() => {}); // started inside the tap, so phones allow sound
+    const focusClose = () => $('.film__close', film).focus({ preventScroll: true });
+    const o = thumb && thumb.getBoundingClientRect();
+    if (!hasGsap || !onScreen(o)) {
+      if (hasGsap) gsap.fromTo(film, { autoAlpha: 0 }, { autoAlpha: 1, duration: .6, ease: 'power2.out', onComplete: focusClose });
+      else focusClose();
+      return;
+    }
+    filmBusy = true;
+    film.focus({ preventScroll: true });
+    const t = filmVideo.getBoundingClientRect();
+    const fly = flyer(thumbSrc, o, getComputedStyle(trigger).borderRadius);
+    // swap in the full-size poster once it's decoded, so the picture sharpens as it grows
+    if (filmVideo.poster && 'decode' in Image.prototype) {
+      const big = new Image();
+      big.src = filmVideo.poster;
+      big.decode().then(() => { if (fly.isConnected) fly.src = big.src; }).catch(() => {});
+    }
+    // if the film starts before the thumbnail lands, hold it on its first frame
+    const hold = () => { if (filmBusy) filmVideo.pause(); };
+    filmVideo.addEventListener('playing', hold, { once: true });
+    gsap.set(filmVideo, { autoAlpha: 0 });
+    gsap.set(filmTop, { autoAlpha: 0, y: -12 });
+    gsap.timeline({
+      onComplete: () => {
+        fly.remove(); filmBusy = false;
+        filmVideo.removeEventListener('playing', hold);
+        if (filmVideo.paused) filmVideo.play().catch(() => {});
+        focusClose();
+      }
+    })
+      .fromTo(filmBg, { autoAlpha: 0 }, { autoAlpha: 1, duration: .6, ease: 'power2.out' }, 0)
+      .to(fly, { left: t.left, top: t.top, width: t.width, height: t.height, borderRadius: 0, duration: .95, ease: 'expo.inOut' }, 0)
+      .to(filmVideo, { autoAlpha: 1, duration: .25 }, .85)
+      .to(filmTop, { autoAlpha: 1, y: 0, duration: .5 }, .6);
   };
   const closeFilm = () => {
+    if (filmBusy || film.hidden) return;
     filmVideo.pause();
-    const done = () => { film.hidden = true; lockScroll(false); filmReturn && filmReturn.focus(); };
-    hasGsap ? gsap.to(film, { autoAlpha: 0, duration: .4, onComplete: done }) : done();
+    const back = filmReturn;
+    const finish = () => {
+      film.hidden = true; lockScroll(false);
+      if (hasGsap) gsap.set([film, filmVideo, filmTop], { clearProps: 'opacity,visibility,transform' });
+      if (hasGsap) gsap.set(filmBg, { clearProps: 'opacity,visibility' });
+      heldVideos.forEach(v => v.play().catch(() => {}));
+      heldVideos = [];
+      back && back.focus({ preventScroll: true });
+    };
+    if (!hasGsap) return finish();
+    filmBusy = true;
+    const done = () => { filmBusy = false; finish(); };
+    const thumb = back && $('img', back), r = thumb && thumb.getBoundingClientRect();
+    if (onScreen(r)) {
+      const s = filmVideo.getBoundingClientRect();
+      const fly = flyer(filmVideo.poster || thumb.currentSrc || thumb.src, s, '0px');
+      gsap.timeline({ onComplete: () => { fly.remove(); done(); } })
+        .to(filmTop, { autoAlpha: 0, duration: .25 }, 0)
+        .to(filmVideo, { autoAlpha: 0, duration: .2 }, 0)
+        .to(filmBg, { autoAlpha: 0, duration: .6, ease: 'power2.inOut' }, .15)
+        .to(fly, { left: r.left, top: r.top, width: r.width, height: r.height, borderRadius: getComputedStyle(back).borderRadius, duration: .8, ease: 'expo.inOut' }, 0);
+    } else {
+      gsap.to(film, { autoAlpha: 0, duration: .4, onComplete: done });
+    }
   };
   $$('[data-film]').forEach(b => b.addEventListener('click', openFilm));
   $('.film__close', film).addEventListener('click', closeFilm);
@@ -189,23 +260,72 @@
   });
   $('.bresult__edit', result).addEventListener('click', () => { result.hidden = true; form.hidden = false; form.checkin.focus(); });
 
-  /* ================= EXPERIENCES ================= */
-  const expItems = $$('.exp-item'), expFigs = $$('.exp-stage__fig'), expCount = $('.exp__count b');
-  let expActive = 0;
-  const setExp = i => {
-    if (i === expActive) return;
-    expFigs.forEach(f => f.classList.remove('was-active'));
-    expFigs[expActive] && expFigs[expActive].classList.add('was-active');
-    expActive = i;
-    expItems.forEach((li, k) => li.classList.toggle('is-active', k === i));
-    expFigs.forEach((f, k) => f.classList.toggle('is-active', k === i));
-    if (expCount) expCount.textContent = pad(i + 1);
+  /* ================= EXPERIENCES & DINING ================= */
+  // phones: each tab's cards sit in a swipeable rail, with a counter and hairline that follow along
+  const xpRails = $$('.exp__panel').map(panel => ({ rail: $('.xp-grid', panel), prog: $('.xp-progress', panel) })).filter(r => r.rail && r.prog);
+  const syncRail = ({ rail, prog }) => {
+    const n = $$('.xp', rail).length, max = rail.scrollWidth - rail.clientWidth;
+    // only a scrolling rail needs to be reachable by keyboard
+    if (max > 2) rail.tabIndex = 0; else rail.removeAttribute('tabindex');
+    const p = max > 2 ? Math.min(1, Math.max(0, rail.scrollLeft / max)) : 0;
+    $('.xp-progress__bar i', prog).style.transform = `scaleX(${(1 + p * (n - 1)) / n})`;
+    $('.xp-progress__count b', prog).textContent = pad(Math.round(p * (n - 1)) + 1);
   };
-  expItems.forEach((li, i) => li.addEventListener('mouseenter', () => desktop() && setExp(i)));
-  const expSpy = new IntersectionObserver(entries => {
-    entries.forEach(e => { if (e.isIntersecting && desktop()) setExp(+e.target.dataset.i); });
-  }, { rootMargin: '-48% 0px -48% 0px' });
-  expItems.forEach(li => expSpy.observe(li));
+  const syncRails = () => xpRails.forEach(syncRail);
+  xpRails.forEach(r => r.rail.addEventListener('scroll', () => syncRail(r), { passive: true }));
+  addEventListener('resize', syncRails);
+  syncRails();
+
+  // two tabs share one card grid: switching swaps the heading, the intro and the cards, so the height stays put
+  const expSec = $('#experiences'), expTabs = $$('.exp__tab');
+  const showTab = (tab, { focus = false, animate = true } = {}) => {
+    if (!tab || tab.getAttribute('aria-selected') === 'true') { if (focus && tab) tab.focus(); return; }
+    expTabs.forEach(t => {
+      const on = t === tab;
+      t.setAttribute('aria-selected', String(on));
+      t.tabIndex = on ? 0 : -1;
+      $('#' + t.getAttribute('aria-controls')).hidden = !on;
+    });
+    const panel = $('#' + tab.getAttribute('aria-controls')), which = panel.id.replace('xp-panel-', '');
+    $$('.exp__copy', expSec).forEach(cp => { cp.hidden = cp.dataset.copy !== which; });
+    if (focus) tab.focus();
+    const rail = $('.xp-grid', panel);
+    if (rail) rail.scrollLeft = 0;
+    syncRails();
+    if (hasGsap && window.ScrollTrigger) ScrollTrigger.refresh();
+    if (!hasGsap || !animate) return;
+    const copy = $(`.exp__copy[data-copy="${which}"]`, expSec), cards = $$('.xp', panel);
+    gsap.fromTo($$('.ln > span', copy), { yPercent: 110 }, { yPercent: 0, duration: 1, ease: 'expo.out', stagger: .08 });
+    gsap.fromTo($('.lede', copy), { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: .8, ease: 'power3.out', delay: .1, clearProps: 'opacity,transform' });
+    // opacity, not autoAlpha: the cards stay reachable while they arrive
+    gsap.fromTo(cards, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: .9, ease: 'expo.out', stagger: .06, clearProps: 'opacity,transform' });
+    gsap.fromTo(cards.map(c => $('.pic', c)).filter(Boolean), { scale: 1.15 }, { scale: 1, duration: 1.4, ease: 'expo.out', stagger: .06, clearProps: 'transform' });
+  };
+  expTabs.forEach(t => t.addEventListener('click', () => showTab(t)));
+  const expTablist = $('.exp__tabs');
+  if (expTablist) expTablist.addEventListener('keydown', e => {
+    const i = expTabs.indexOf(document.activeElement);
+    if (i < 0) return;
+    let next = -1;
+    if (e.key === 'ArrowRight') next = (i + 1) % expTabs.length;
+    else if (e.key === 'ArrowLeft') next = (i - 1 + expTabs.length) % expTabs.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = expTabs.length - 1;
+    if (next < 0) return;
+    e.preventDefault();
+    showTab(expTabs[next], { focus: true });
+  });
+  // links to #dining (nav, menu, footer) land on this section with the Dining tab open
+  // (the browser's own jump would aim at the tab inside the sticky heading, so scroll to the section instead)
+  document.addEventListener('click', e => {
+    if (!e.target.closest('a[href="#dining"]')) return;
+    showTab($('#dining'));
+    if (e.defaultPrevented) return; // the phone menu scrolls there itself
+    e.preventDefault();
+    history.pushState(null, '', '#dining');
+    expSec.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' });
+  });
+  if (location.hash === '#dining') showTab($('#dining'), { animate: false });
 
   /* ================= REVIEWS (only if verified reviews exist) ================= */
   const reviews = $$('.review');
@@ -223,8 +343,35 @@
   const lbImg = $('.lb__img', lb), lbVideo = $('.lb__video', lb), lbStage = $('.lb__stage', lb);
   const lbCount = $('.lb__count', lb), lbTitle = $('.lb__title', lb), lbMeta = $('.lb__meta', lb), lbDesc = $('.lb__desc', lb), lbLink = $('.lb__link', lb);
   let lbItems = [], lbIndex = 0, lbOrigins = [], lbReturn = null, lbBusy = false;
+  let lbOnIndex = null; // optional: told which photo is showing, so the page behind can follow along
+  // optional strip of every photo in the set (room galleries); click one to jump to it
+  const lbThumbs = $('.lb__thumbs', lb), lbThumbTrack = $('.lb__thumbs-track', lb);
+  let lbHasThumbs = false;
+  const lbChrome = () => [$('.lb__top', lb), $('.lb__bottom', lb), lbThumbs];
+  // the backdrop takes its tint from the photo on show: a small copy, heavily blurred, fading between layers
+  const lbAmbs = $$('.lb__amb', lb);
+  let lbAmbOn = -1, lbAmbSrc = '';
+  const setLbAmb = src => {
+    if (!src || src === lbAmbSrc || lbAmbs.length < 2) return;
+    lbAmbSrc = src; lbAmbOn = lbAmbOn === 0 ? 1 : 0;
+    lbAmbs[lbAmbOn].style.backgroundImage = `url("${src}")`;
+    lbAmbs.forEach((l, k) => l.classList.toggle('is-on', k === lbAmbOn));
+  };
+  const buildThumbs = on => {
+    lbHasThumbs = !!on && lbItems.length > 1;
+    lb.classList.toggle('lb--thumbs', lbHasThumbs);
+    lbThumbs.hidden = !lbHasThumbs;
+    lbThumbTrack.innerHTML = lbHasThumbs ? lbItems.map((it, i) =>
+      `<button type="button" class="lb__thumb" data-i="${i}" aria-label="Photo ${i + 1} of ${lbItems.length}"><img src="${T.best(it.key, 160)}" alt="" decoding="async"></button>`).join('') : '';
+  };
+  const syncThumbs = () => {
+    if (!lbHasThumbs) return;
+    lbThumbTrack.classList.toggle('is-scroll', lbThumbTrack.scrollWidth > lbThumbTrack.clientWidth + 2);
+    [...lbThumbTrack.children].forEach((b, i) => b.setAttribute('aria-current', i === lbIndex ? 'true' : 'false'));
+    const cur = lbThumbTrack.children[lbIndex];
+    if (cur) lbThumbTrack.scrollTo({ left: cur.offsetLeft - (lbThumbTrack.clientWidth - cur.offsetWidth) / 2, behavior: reduce ? 'auto' : 'smooth' });
+  };
 
-  const galleryList = () => (T.galleryItems || []).map(g => ({ key: g.image, video: g.video, title: g.alt, meta: g.video ? 'Video' : '' }));
   const nearbyList = () => (T.nearbyItems || []).map(n => ({
     key: n.image, title: n.name, meta: `${n.type} · ${n.km} km from the resort`, desc: n.desc,
     link: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(n.map)}`
@@ -240,6 +387,7 @@
 
   const fill = () => {
     const it = lbItems[lbIndex];
+    if (lbOnIndex) lbOnIndex(lbIndex);
     lbCount.innerHTML = `<b>${pad(lbIndex + 1)}</b> / <span>${pad(lbItems.length)}</span>`;
     lbTitle.textContent = it.title || '';
     lbMeta.textContent = it.meta || '';
@@ -247,6 +395,7 @@
     lbLink.hidden = !it.link;
     if (it.link) { lbLink.href = it.link; lbLink.setAttribute('aria-label', `Directions to ${it.title} (opens Google Maps)`); }
     const m = T.image(it.key) || {};
+    setLbAmb(T.best(it.key, 480));
     if (it.video) {
       const src = T.videoSource(it.video, { getBoundingClientRect: () => lbStage.getBoundingClientRect() });
       lbImg.hidden = true; lbVideo.hidden = false;
@@ -258,18 +407,20 @@
       lbVideo.pause(); lbVideo.hidden = true; lbImg.hidden = false;
       const s = lbStage.getBoundingClientRect();
       lbImg.src = T.best(it.key, Math.max(s.width, s.height * (m.w / m.h || 1.5)) * Math.min(devicePixelRatio || 1, 2));
-      lbImg.alt = it.title || m.alt || '';
+      lbImg.alt = it.alt || it.title || m.alt || '';
       lbImg.width = m.w || 0; lbImg.height = m.h || 0;
     }
     const n = lbItems.length > 1;
     $('.lb__prev', lb).hidden = !n; $('.lb__next', lb).hidden = !n;
+    syncThumbs();
   };
 
-  const openLb = (items, index, origins) => {
+  const openLb = (items, index, origins, onIndex, opts = {}) => {
     if (lbBusy) return;
-    lbItems = items; lbIndex = index; lbOrigins = origins || [];
+    lbItems = items; lbIndex = index; lbOrigins = origins || []; lbOnIndex = onIndex || null;
     lbReturn = document.activeElement;
     lb.hidden = false; lockScroll(true);
+    buildThumbs(opts.thumbs);
     fill();
     const origin = lbOrigins[index] && $('img', lbOrigins[index]);
     if (hasGsap && origin) {
@@ -281,14 +432,14 @@
       body.appendChild(fly);
       const media = lbImg.hidden ? lbVideo : lbImg;
       gsap.set(media, { autoAlpha: 0 });
-      gsap.set([$('.lb__top', lb), $('.lb__bottom', lb)], { autoAlpha: 0, y: 12 });
+      gsap.set(lbChrome(), { autoAlpha: 0, y: 12 });
       // the dialog itself holds focus (and keyboard control) while the controls are still fading in
       lb.focus({ preventScroll: true });
       gsap.timeline({ onComplete: () => { fly.remove(); lbBusy = false; $('.lb__close', lb).focus({ preventScroll: true }); } })
         .fromTo($('.lb__bg', lb), { autoAlpha: 0 }, { autoAlpha: 1, duration: .5, ease: 'power2.out' }, 0)
         .to(fly, { left: t.left, top: t.top, width: t.width, height: t.height, duration: .85, ease: 'expo.inOut' }, 0)
         .to(media, { autoAlpha: 1, duration: .25 }, .75)
-        .to([$('.lb__top', lb), $('.lb__bottom', lb)], { autoAlpha: 1, y: 0, duration: .5, stagger: .06, ease: 'power3.out' }, .55);
+        .to(lbChrome(), { autoAlpha: 1, y: 0, duration: .5, stagger: .06, ease: 'power3.out' }, .55);
     } else {
       $('.lb__close', lb).focus({ preventScroll: true });
     }
@@ -299,7 +450,7 @@
     lbVideo.pause();
     const finish = () => {
       lb.hidden = true; lockScroll(false);
-      gsap && gsap.set && hasGsap && gsap.set([lbImg, lbVideo, $('.lb__bg', lb), $('.lb__top', lb), $('.lb__bottom', lb)], { clearProps: 'all' });
+      gsap && gsap.set && hasGsap && gsap.set([lbImg, lbVideo, $('.lb__bg', lb), ...lbChrome()], { clearProps: 'all' });
       const back = lbOrigins[lbIndex] || lbReturn;
       back && back.focus({ preventScroll: true });
     };
@@ -317,7 +468,7 @@
       body.appendChild(fly);
       gsap.set(lbImg, { autoAlpha: 0 });
       gsap.timeline({ onComplete: () => { fly.remove(); done(); } })
-        .to([$('.lb__top', lb), $('.lb__bottom', lb)], { autoAlpha: 0, duration: .25 }, 0)
+        .to(lbChrome(), { autoAlpha: 0, duration: .25 }, 0)
         .to($('.lb__bg', lb), { autoAlpha: 0, duration: .55, ease: 'power2.inOut' }, .1)
         .to(fly, { left: r.left, top: r.top, width: r.width, height: r.height, duration: .75, ease: 'expo.inOut' }, 0);
     } else {
@@ -326,8 +477,12 @@
   };
 
   const stepLb = dir => {
-    if (lbBusy || lbItems.length < 2) return;
-    lbIndex = (lbIndex + dir + lbItems.length) % lbItems.length;
+    if (lbItems.length < 2) return;
+    goLb((lbIndex + dir + lbItems.length) % lbItems.length, dir);
+  };
+  const goLb = (i, dir = i > lbIndex ? 1 : -1) => {
+    if (lbBusy || i === lbIndex) return;
+    lbIndex = i;
     if (!hasGsap) return fill();
     lbBusy = true;
     const out = lbImg.hidden ? lbVideo : lbImg;
@@ -363,8 +518,93 @@
     sx = sy = null;
   });
 
-  const gBtns = $$('[data-gallery]');
-  gBtns.forEach(b => b.addEventListener('click', () => openLb(galleryList(), +b.dataset.gallery, gBtns)));
+  lbThumbTrack.addEventListener('click', e => { const b = e.target.closest('.lb__thumb'); if (b) goLb(+b.dataset.i); });
+
+  // rooms: the button on a room's tile opens all of its photos, starting from the cover
+  const roomList = r => r.photos.map(key => {
+    const alt = (T.image(key) || {}).alt || '';
+    return { key, title: r.name, meta: 'Accommodation', desc: alt, alt: alt ? `${r.name}: ${alt}` : r.name };
+  });
+  $$('[data-room]').forEach(b => b.addEventListener('click', () => {
+    const r = (T.roomItems || [])[+b.dataset.room];
+    if (r) openLb(roomList(r), 0, r.photos.map(() => b), null, { thumbs: true });
+  }));
+
+  // rooms: five at first; each "Show more rooms" adds five (a new row on desktop, further along the
+  // swipeable row on phones), and once all are out "Show fewer rooms" folds them away again
+  const rgal = $('.rgal'), rcards = rgal ? $$('.rcard', rgal) : [];
+  const moreBtn = $('.stays__morebtn'), shownOut = $('.stays__shown b');
+  const rise = (els, delay = 0) => {
+    if (!hasGsap || !els.length) return;
+    // opacity, not autoAlpha: the rooms stay focusable while they fade in
+    gsap.fromTo(els, { opacity: 0, y: 46 }, { opacity: 1, y: 0, duration: 1.2, ease: 'expo.out', stagger: .07, delay, clearProps: 'transform,opacity' });
+    gsap.fromTo(els.map(li => $('.rcard__img .pic', li)).filter(Boolean), { scale: 1.25 }, { scale: 1, duration: 1.7, ease: 'expo.out', stagger: .07, delay, clearProps: 'transform' });
+  };
+  if (rcards.length && moreBtn) {
+    const total = rcards.length, step = Math.min(T.roomsFirst || 5, total), moreLabel = $('.stays__morelabel', moreBtn);
+    let shown = step;
+    const syncMore = () => {
+      const all = shown >= total;
+      if (shownOut) shownOut.textContent = shown;
+      moreLabel.textContent = all ? 'Show fewer rooms' : 'Show more rooms';
+      moreBtn.classList.toggle('is-less', all);
+      moreBtn.setAttribute('aria-expanded', String(shown > step));
+      moreBtn.hidden = total <= step;
+    };
+    moreBtn.addEventListener('click', () => {
+      if (shown >= total) {
+        shown = step;
+        rcards.forEach((li, i) => { li.hidden = i >= shown; });
+        syncMore();
+        if (hasGsap && window.ScrollTrigger) ScrollTrigger.refresh();
+        rgal.scrollTo({ left: 0, behavior: 'auto' });
+        $('#stay').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' });
+        return;
+      }
+      const fresh = rcards.slice(shown, shown + step);
+      shown += fresh.length;
+      fresh.forEach(li => { li.hidden = false; });
+      syncMore();
+      if (hasGsap && window.ScrollTrigger) ScrollTrigger.refresh();
+      rise(fresh);
+      // on the swipeable row, slide along to the first new room
+      if (rgal.scrollWidth > rgal.clientWidth + 2) {
+        const pad = parseFloat(getComputedStyle(rgal).paddingLeft) || 0;
+        rgal.scrollTo({ left: fresh[0].offsetLeft - pad, behavior: reduce ? 'auto' : 'smooth' });
+      }
+      // keyboard users land on the first new room
+      const firstNew = $('.rcard__btn', fresh[0]);
+      if (firstNew) firstNew.focus({ preventScroll: true });
+    });
+    syncMore();
+  }
+
+  // the backdrop is a blurred copy of the room being looked at (the first room until another is hovered)
+  const ambs = $$('.stays__amb');
+  if (rgal && ambs.length === 2) {
+    let ambOn = -1, ambSrc = '', ambTimer = 0;
+    const showAmb = img => {
+      const src = img && (img.currentSrc || img.src);
+      if (!src || src === ambSrc || !img.complete) return;
+      ambSrc = src; ambOn = ambOn === 0 ? 1 : 0;
+      ambs[ambOn].style.backgroundImage = `url("${src}")`;
+      ambs.forEach((l, k) => l.classList.toggle('is-on', k === ambOn));
+    };
+    const firstImg = $('.rcard img', rgal);
+    if (firstImg) {
+      if (firstImg.complete && firstImg.currentSrc) showAmb(firstImg);
+      else firstImg.addEventListener('load', () => showAmb(firstImg), { once: true });
+    }
+    const follow = e => {
+      const card = e.target.closest('.rcard__btn');
+      if (!card) return;
+      clearTimeout(ambTimer);
+      ambTimer = setTimeout(() => showAmb($('img', card)), 140); // wait for the pointer to settle
+    };
+    rgal.addEventListener('pointerover', follow);
+    rgal.addEventListener('focusin', follow);
+  }
+
   const pBtns = $$('[data-place]');
   pBtns.forEach(b => b.addEventListener('click', () => {
     if (rail && rail.dataset.dragged) return;
@@ -382,9 +622,16 @@
       const p = max > 0 ? rail.scrollLeft / max : 0;
       if (fillBar) fillBar.style.transform = `scaleX(${p})`;
       if (dot) dot.style.left = (p * 100) + '%';
-      const left = rail.getBoundingClientRect().left + parseFloat(getComputedStyle(rail).paddingLeft) - 2;
-      const first = places.find(pl => pl.getBoundingClientRect().right > left + 40) || places[0];
-      if (kmLbl && first) kmLbl.textContent = first.dataset.km + ' km';
+      // the label reads the place under a point that sweeps across the visible cards as the wall moves,
+      // so it says 13 km at the start, 51 km at the end, and the distance in between on the way
+      const r = rail.getBoundingClientRect(), cs = getComputedStyle(rail);
+      const from = r.left + parseFloat(cs.paddingLeft), to = r.right - parseFloat(cs.paddingRight);
+      const readX = from + 30 + p * Math.max(0, to - from - 60);
+      const at = places.reduce((best, pl) => {
+        const b = pl.getBoundingClientRect(), d = readX < b.left ? b.left - readX : readX > b.right ? readX - b.right : 0;
+        return d < best.d ? { d, pl } : best;
+      }, { d: Infinity }).pl;
+      if (kmLbl && at && kmLbl.textContent !== at.dataset.km + ' km') kmLbl.textContent = at.dataset.km + ' km';
       if (prevB) prevB.disabled = rail.scrollLeft < 4;
       if (nextB) nextB.disabled = rail.scrollLeft > max - 4;
     };
@@ -426,7 +673,214 @@
       } else rail.classList.remove('is-dragging');
     });
     rail.addEventListener('dragstart', e => e.preventDefault());
+
+    // auto drift: the wall travels towards the farther places, rests at the end, then travels back, and the
+    // distance scale above follows it (it reads the scroll position). It pauses on hover and keyboard focus,
+    // hands over to the visitor on touch, drag, wheel or the arrows (and carries on a few seconds later),
+    // waits while a photo is open or the wall is off screen, and the Pause button stops it altogether.
+    const autoBtn = $('.near__auto');
+    if (reduce) { if (autoBtn) autoBtn.hidden = true; }
+    else {
+      const speed = () => desktop() ? 42 : 30; // pixels per second
+      const st = { hover: false, focus: false, inView: false, stopped: false, seen: false };
+      let dir = 1, pos = rail.scrollLeft, last = 0, raf = 0, restUntil = 0, holdUntil = 0;
+      const running = () => !st.stopped && !st.hover && !st.focus && st.inView && lb.hidden && !document.hidden;
+      const tick = now => {
+        raf = 0;
+        if (!running()) { last = 0; return; }
+        raf = requestAnimationFrame(tick);
+        const dt = last ? Math.min(now - last, 64) / 1000 : 0;
+        last = now;
+        const held = now < holdUntil;
+        // scroll snapping would pull the wall back to a card edge on every step, so it is off while drifting
+        rail.classList.toggle('is-auto', !held);
+        if (held || now < restUntil) { pos = rail.scrollLeft; return; }
+        const max = rail.scrollWidth - rail.clientWidth;
+        if (max <= 2) return;
+        pos = Math.min(max, Math.max(0, pos + dir * speed() * dt));
+        rail.scrollLeft = pos;
+        if ((dir > 0 && pos >= max - .5) || (dir < 0 && pos <= .5)) { dir = -dir; restUntil = now + 1800; }
+      };
+      const sync = () => {
+        if (autoBtn) {
+          autoBtn.classList.toggle('is-stopped', st.stopped);
+          autoBtn.setAttribute('aria-label', st.stopped ? 'Play the moving photos' : 'Pause the moving photos');
+        }
+        if (st.stopped) rail.classList.remove('is-auto');
+        if (running() && !raf) { pos = rail.scrollLeft; raf = requestAnimationFrame(tick); }
+      };
+      // the visitor takes over; the drift carries on from wherever they leave it
+      const hold = ms => { holdUntil = performance.now() + ms; rail.classList.remove('is-auto'); pos = rail.scrollLeft; };
+      rail.addEventListener('pointerdown', () => hold(Infinity));
+      addEventListener('pointerup', () => { if (holdUntil === Infinity) hold(3000); });
+      addEventListener('pointercancel', () => { if (holdUntil === Infinity) hold(3000); });
+      rail.addEventListener('wheel', () => hold(2500), { passive: true });
+      rail.addEventListener('keydown', () => hold(4000));
+      $$('[data-rail]').forEach(b => b.addEventListener('click', () => hold(4000)));
+      rail.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') { st.hover = true; sync(); } });
+      rail.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') { st.hover = false; sync(); } });
+      // only keyboard focus pauses it (a mouse click on a photo also focuses it, but the hover covers that)
+      rail.addEventListener('focusin', e => { if (e.target.matches(':focus-visible')) { st.focus = true; sync(); } });
+      rail.addEventListener('focusout', e => { if (!rail.contains(e.relatedTarget)) { st.focus = false; sync(); } });
+      new IntersectionObserver(es => es.forEach(e => {
+        st.inView = e.isIntersecting;
+        if (st.inView && !st.seen) { st.seen = true; restUntil = performance.now() + 1200; } // a moment to take it in first
+        sync();
+      }), { threshold: .2 }).observe(rail);
+      new MutationObserver(sync).observe(lb, { attributes: true, attributeFilter: ['hidden'] });
+      document.addEventListener('visibilitychange', sync);
+      if (autoBtn) autoBtn.addEventListener('click', () => { st.stopped = !st.stopped; sync(); });
+      sync();
+    }
   }
+
+  /* ================= HIGHLIGHTS ================= */
+  // Desktop: panels open on hover (after a short pause), click or keyboard focus, and the open one
+  // advances by itself while the gallery is on screen. Phones and tablets: a swipe rail, where the
+  // card at the start of the rail is the open one. The open photo goes full screen in the lightbox.
+  const hl = $('[data-hl]');
+  const hlApi = (() => {
+    const items = hl ? $$('.hl-item', hl) : [];
+    if (!items.length) return null;
+    const track = $('.hl__track', hl), btns = $$('.hl-item__btn', hl);
+    const live = $('[data-hl-live]', hl), playBtn = $('.hl__play', hl);
+    const n = items.length;
+    // "01 / 06" in the heading strip follows the open photo
+    const two = k => String(k).padStart(2, '0');
+    const count = $('.hl__count', hl), countNow = $('[data-hl-now]', hl), countAll = $('[data-hl-total]', hl);
+    if (count && countNow && countAll) { countAll.textContent = two(n); count.hidden = false; }
+    const wide = matchMedia('(min-width: 900px)');
+    const list = (T.highlightItems || []).map(h => ({ key: h.image, title: h.title, desc: h.text, meta: 'Highlights' }));
+    const st = { hover: false, focus: false, inView: false, stopped: false, ready: !hasGsap };
+    let active = 0;
+
+    const syncPlay = () => {
+      hl.classList.toggle('is-auto', wide.matches && !reduce && !st.stopped);
+      hl.classList.toggle('is-paused', st.hover || st.focus || !st.inView || !st.ready || !lb.hidden || document.hidden);
+      if (playBtn) {
+        playBtn.hidden = !wide.matches || reduce;
+        playBtn.classList.toggle('is-stopped', st.stopped);
+        playBtn.setAttribute('aria-label', st.stopped ? 'Play slideshow' : 'Pause slideshow');
+      }
+    };
+
+    const padL = () => parseFloat(getComputedStyle(track).paddingLeft) || 0;
+    const railTo = (i, smooth = !reduce) => track.scrollTo({ left: items[i].offsetLeft - padL(), behavior: smooth ? 'smooth' : 'auto' });
+
+    const setActive = (i, { announce = false, scroll = true } = {}) => {
+      active = (i + n) % n;
+      items.forEach((li, k) => li.classList.toggle('is-active', k === active));
+      hl.style.setProperty('--hl-i', active);
+      if (countNow) countNow.textContent = two(active + 1);
+      if (announce && live && list[active]) live.textContent = `${active + 1} of ${n}: ${list[active].title}`;
+      if (scroll && !wide.matches) railTo(active);
+    };
+
+    // rail: how far each card is from the start of the rail (-1 … 1) drives its scale, shade and drift
+    let raf = 0;
+    const railSync = () => {
+      raf = 0;
+      if (wide.matches) return;
+      const start = track.scrollLeft + padL();
+      const step = items[0].offsetWidth + (parseFloat(getComputedStyle(track).columnGap) || 0);
+      let best = active, bestD = Infinity;
+      items.forEach((li, k) => {
+        const d = li.offsetLeft - start;
+        const p = Math.max(-1, Math.min(1, d / step));
+        li.style.setProperty('--ps', p.toFixed(3));
+        li.style.setProperty('--p', Math.abs(p).toFixed(3));
+        if (Math.abs(d) < bestD) { bestD = Math.abs(d); best = k; }
+      });
+      if (best !== active) setActive(best, { scroll: false });
+    };
+    const queueSync = () => { if (!raf) raf = requestAnimationFrame(railSync); };
+    track.addEventListener('scroll', queueSync, { passive: true });
+    addEventListener('resize', queueSync);
+
+    // "View" badge that trails a mouse pointer over the open panel
+    let cursorMove = () => {}, cursorOff = () => {};
+    if (matchMedia('(hover: hover) and (pointer: fine)').matches && !reduce) {
+      const cur = document.createElement('div');
+      cur.className = 'hl-cursor'; cur.setAttribute('aria-hidden', 'true'); cur.innerHTML = '<span>View</span>';
+      body.appendChild(cur);
+      let x = 0, y = 0, tx = 0, ty = 0, on = false, loop = 0;
+      const tick = () => {
+        x += (tx - x) * .2; y += (ty - y) * .2;
+        cur.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0)`;
+        loop = Math.abs(tx - x) + Math.abs(ty - y) > .2 ? requestAnimationFrame(tick) : 0;
+      };
+      const show = v => { on = v; cur.classList.toggle('is-on', v); hl.classList.toggle('is-cursor-on', v); };
+      cursorMove = e => {
+        if (e) { tx = e.clientX; ty = e.clientY; }
+        const el = document.elementFromPoint(tx, ty);
+        const li = el && el.closest('.hl-item');
+        const v = wide.matches && lb.hidden && !!li && li.classList.contains('is-active');
+        if (v && !on) { x = tx; y = ty; }
+        show(v);
+        if (!loop) loop = requestAnimationFrame(tick);
+      };
+      cursorOff = () => show(false);
+      // the page scrolling moves the panels under a still pointer
+      addEventListener('scroll', () => { if (on || st.hover) cursorMove(); }, { passive: true });
+    }
+
+    // a closed panel (or a card further along the rail) opens; the open one goes full screen
+    btns.forEach((b, i) => b.addEventListener('click', () => {
+      if (i !== active) { setActive(i, { announce: true }); cursorMove(); return; }
+      cursorOff();
+      openLb(list, i, btns, k => { if (k !== active) setActive(k); });
+    }));
+    $$('[data-hl-step]', hl).forEach(b => b.addEventListener('click', () => setActive(active + +b.dataset.hlStep, { announce: true })));
+    if (playBtn) playBtn.addEventListener('click', () => { st.stopped = !st.stopped; syncPlay(); });
+    // the progress line along the open panel is a CSS animation; when it completes, move on
+    track.addEventListener('animationend', e => { if (e.animationName === 'hl-progress') setActive(active + 1); });
+
+    // hover: wait for the pointer to rest on a panel, so sweeping across them doesn't open each one
+    let hoverT = 0, hoverI = -1;
+    track.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') { st.hover = true; syncPlay(); } });
+    track.addEventListener('pointerleave', () => { st.hover = false; clearTimeout(hoverT); hoverI = -1; cursorOff(); syncPlay(); });
+    track.addEventListener('pointermove', e => {
+      if (e.pointerType !== 'mouse' || !wide.matches) return;
+      cursorMove(e);
+      if (!e.movementX && !e.movementY) return; // ignore moves caused by the panels resizing under the pointer
+      const li = e.target.closest('.hl-item'), i = li ? +li.dataset.i : -1;
+      if (i === hoverI) return;
+      clearTimeout(hoverT); hoverI = i;
+      if (i >= 0 && i !== active) hoverT = setTimeout(() => { hoverI = -1; setActive(i); cursorMove(); }, 140);
+    });
+
+    // keyboard: focusing a panel opens it; arrow keys move between panels
+    track.addEventListener('focusin', e => {
+      const li = e.target.closest('.hl-item');
+      if (!li || !e.target.matches(':focus-visible')) return;
+      st.focus = true; syncPlay();
+      if (+li.dataset.i !== active) setActive(+li.dataset.i, { announce: true });
+    });
+    track.addEventListener('focusout', e => { if (!track.contains(e.relatedTarget)) { st.focus = false; syncPlay(); } });
+    track.addEventListener('keydown', e => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      const li = e.target.closest('.hl-item');
+      if (!li) return;
+      e.preventDefault();
+      const k = (+li.dataset.i + (e.key === 'ArrowRight' ? 1 : -1) + n) % n;
+      btns[k].focus({ preventScroll: true });
+      setActive(k, { announce: true });
+    });
+
+    // only advance while the gallery is on screen, the tab is visible and the lightbox is closed
+    new IntersectionObserver(([e]) => { st.inView = e.isIntersecting; syncPlay(); }, { threshold: .3 }).observe(track);
+    document.addEventListener('visibilitychange', syncPlay);
+    new MutationObserver(syncPlay).observe(lb, { attributes: true, attributeFilter: ['hidden'] });
+    wide.addEventListener('change', () => {
+      items.forEach(li => { li.style.removeProperty('--p'); li.style.removeProperty('--ps'); });
+      clearTimeout(hoverT); cursorOff(); syncPlay();
+      if (!wide.matches) { railTo(active, false); queueSync(); }
+    });
+
+    setActive(0, { scroll: false });
+    railSync(); syncPlay();
+    return { ready: () => { st.ready = true; syncPlay(); } };
+  })();
 
   /* ================= MOBILE BOOKING BAR ================= */
   const mbar = $('.mbar');
@@ -440,6 +894,19 @@
     vis[e.target.id === 'book' ? 'book' : 'foot'] = e.isIntersecting; syncBar();
   }));
   io2.observe($('#book')); io2.observe($('.foot'));
+
+  /* ================= FOOTER: the time at the resort right now ================= */
+  const localTime = $('[data-localtime]');
+  if (localTime && window.Intl) {
+    try {
+      const fmt = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Colombo', hour: 'numeric', minute: '2-digit', hour12: true });
+      const out = $('[data-localtime-value]', localTime);
+      const tick = () => { out.textContent = fmt.format(new Date()); };
+      tick();
+      setInterval(tick, 20000);
+      localTime.hidden = false;
+    } catch (e) { /* time zone not supported: the line stays hidden */ }
+  }
 
   /* ================= MOTION ================= */
   if (!hasGsap) { html.classList.remove('anim'); return; }
@@ -477,6 +944,30 @@
     gsap.from($$('.ln > span', el), { yPercent: 110, duration: 1.3, ease: 'expo.out', stagger: .1, scrollTrigger: { trigger: el, start: 'top 86%' } });
   });
 
+  /* word reveals: each word rises out of its own mask and sharpens as it lands,
+     while the hairline in the same header draws across */
+  $$('[data-words]').forEach(el => {
+    const words = [];
+    const texts = [];
+    const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    while (walk.nextNode()) texts.push(walk.currentNode);
+    texts.forEach(t => {
+      const frag = document.createDocumentFragment();
+      t.textContent.split(/(\s+)/).forEach(part => {
+        if (!part) return;
+        if (!part.trim()) { frag.appendChild(document.createTextNode(part)); return; }
+        const mask = document.createElement('span'), w = document.createElement('span');
+        mask.className = 'w'; w.textContent = part;
+        mask.appendChild(w); frag.appendChild(mask); words.push(w);
+      });
+      t.replaceWith(frag);
+    });
+    const head = el.closest('header'), rule = head && $('.hl__rule', head);
+    const tl = gsap.timeline({ scrollTrigger: { trigger: el, start: 'top 90%', once: true } });
+    tl.from(words, { yPercent: 115, rotate: 5, filter: 'blur(6px)', duration: 1.25, ease: 'expo.out', stagger: .07, clearProps: 'all' }, 0);
+    if (rule) tl.from(rule, { scaleX: 0, duration: 1.7, ease: 'expo.inOut', clearProps: 'transform' }, 0);
+  });
+
   /* fade-ups (batched) */
   ScrollTrigger.batch('[data-fade]', {
     start: 'top 90%', once: true,
@@ -486,74 +977,86 @@
   ScrollTrigger.addEventListener('refreshInit', () => {});
 
   /* clip-path image reveals */
-  $$('[data-reveal="clip"]:not(.g-item)').forEach(el => {
+  $$('[data-reveal="clip"]').forEach(el => {
     const pic = $('.pic', el);
     const tl = gsap.timeline({ scrollTrigger: { trigger: el, start: 'top 85%' } });
     tl.fromTo(el, { clipPath: 'inset(100% 0% 0% 0%)' }, { clipPath: 'inset(0% 0% 0% 0%)', duration: 1.5, ease: 'expo.inOut' }, 0);
     if (pic) tl.fromTo(pic, { scale: 1.28 }, { scale: 1, duration: 2, ease: 'expo.out' }, .1);
   });
-  ScrollTrigger.batch('.g-item', {
-    start: 'top 92%', once: true,
-    onEnter: els => {
-      gsap.fromTo(els, { clipPath: 'inset(100% 0% 0% 0%)' }, { clipPath: 'inset(0% 0% 0% 0%)', duration: 1.3, ease: 'expo.inOut', stagger: .09 });
-      gsap.fromTo(els.map(e => $('.pic', e)), { scale: 1.25 }, { scale: 1, duration: 1.8, ease: 'expo.out', stagger: .09 });
-    }
-  });
-  gsap.set('.g-item', { clipPath: 'inset(100% 0% 0% 0%)' });
 
   /* parallax inside frames */
   $$('[data-parallax]').forEach(el => {
     const amt = parseFloat(el.dataset.parallax) || .1;
     gsap.fromTo(el, { yPercent: -amt * 50 }, { yPercent: amt * 50, ease: 'none', scrollTrigger: { trigger: el.parentElement, start: 'top bottom', end: 'bottom top', scrub: true } });
   });
-  // figures marked data-drift float at their own speed, giving the collage depth (desktop only)
-  gsap.matchMedia().add('(min-width: 900px)', () => {
-    $$('[data-drift]').forEach(el => {
-      const d = parseFloat(el.dataset.drift) || 40;
-      gsap.fromTo(el, { y: d }, { y: -d, ease: 'none', scrollTrigger: { trigger: el, start: 'top bottom', end: 'bottom top', scrub: true } });
-    });
-  });
-  // floating rooms rise gently into place; the photo inside settles from a slight zoom
-  gsap.set('[data-float-in]', { autoAlpha: 0, y: 70 });
-  ScrollTrigger.batch('[data-float-in]', {
-    start: 'top 88%', once: true,
-    onEnter: els => {
-      gsap.to(els, { autoAlpha: 1, y: 0, duration: 1.5, ease: 'expo.out', stagger: .15 });
-      gsap.fromTo(els.map(e => $('.room__frame .pic', e)).filter(Boolean), { scale: 1.12 }, { scale: 1, duration: 2, ease: 'expo.out', stagger: .15 });
-    }
-  });
 
-  /* section transitions: pine panels open out as they arrive */
-  ['.dining', '.book'].forEach(sel => {
+  /* highlights: the panels rise into place one after another, each photo settling from a zoom;
+     the first caption and the slideshow wait until they have landed */
+  if (hlApi) {
+    const items = $$('.hl-item', hl), pics = items.map(li => $('.hl-item__img > .pic', li)).filter(Boolean);
+    hl.classList.add('is-waiting');
+    gsap.set(items, { clipPath: 'inset(100% 0% 0% 0%)' });
+    ScrollTrigger.create({
+      trigger: '.hl__track', start: 'top 82%', once: true,
+      onEnter: () => gsap.timeline({ onComplete: () => { gsap.set(items, { clearProps: 'clipPath' }); hlApi.ready(); } })
+        .to(items, { clipPath: 'inset(0% 0% 0% 0%)', duration: 1.5, ease: 'expo.inOut', stagger: .09 }, 0)
+        .fromTo(pics, { scale: 1.35 }, { scale: 1, duration: 2.2, ease: 'expo.out', stagger: .09, clearProps: 'transform' }, .2)
+        .add(() => hl.classList.remove('is-waiting'), .95)
+    });
+  }
+
+  /* rooms: the first cards rise into place one after another as the gallery arrives */
+  const firstCards = $$('.rcard:not([hidden])');
+  if (firstCards.length) {
+    gsap.set(firstCards, { opacity: 0, y: 46 });
+    ScrollTrigger.create({ trigger: '.rgal', start: 'top 85%', once: true, onEnter: () => rise(firstCards) });
+  }
+
+  /* section transitions: the booking panel opens out to full width as it arrives */
+  ['.book'].forEach(sel => {
     const el = $(sel);
     if (!el) return;
     gsap.fromTo(el, { clipPath: 'inset(0% 3.5% 0% 3.5% round 28px)' }, { clipPath: 'inset(0% 0% 0% 0% round 0px)', ease: 'none', scrollTrigger: { trigger: el, start: 'top bottom', end: 'top 25%', scrub: true } });
   });
 
-  /* footer wordmark */
-  gsap.fromTo('.foot__mark', { yPercent: 45, autoAlpha: 0 }, { yPercent: 0, autoAlpha: 1, ease: 'none', scrollTrigger: { trigger: '.foot__mark', start: 'top bottom', end: 'bottom bottom', scrub: true } });
-
-  /* discover: framed window opens into a full-screen aerial, then three chapters */
+  /* discover: the pine panel opens out as it arrives and the film thumbnail rises into place */
+  const disc = $('.discover');
   const mm = gsap.matchMedia();
-  mm.add('(min-width: 900px) and (min-height: 600px)', () => {
-    const sec = $('.discover');
-    sec.classList.add('is-pinned');
-    const chaps = $$('.dchap', sec);
-    const tl = gsap.timeline({
-      scrollTrigger: { trigger: sec, start: 'top top', end: '+=320%', pin: '.discover__pin', scrub: .8, anticipatePin: 1, invalidateOnRefresh: true }
+  if (disc) {
+    gsap.fromTo($('.discover__pin', disc), { clipPath: 'inset(0% 3.5% 0% 3.5% round 28px)' }, { clipPath: 'inset(0% 0% 0% 0% round 0px)', ease: 'none', scrollTrigger: { trigger: disc, start: 'top bottom', end: 'top 25%', scrub: true } });
+    const card = $('.dfilm', disc), cardPic = card && $('.dfilm__media .pic', card);
+    if (card) {
+      const reveal = gsap.timeline({ scrollTrigger: { trigger: card, start: 'top 88%', once: true } })
+        .fromTo(card, { clipPath: 'inset(100% 0% 0% 0% round 6px)' }, { clipPath: 'inset(0% 0% 0% 0% round 6px)', duration: 1.4, ease: 'expo.inOut', clearProps: 'clipPath' }, 0);
+      if (cardPic) reveal.fromTo(cardPic, { scale: 1.25 }, { scale: 1, duration: 1.8, ease: 'expo.out', clearProps: 'transform' }, .1);
+    }
+
+    /* desktop: the panel holds while the three chapters change in place, as before */
+    mm.add('(min-width: 900px) and (min-height: 600px)', () => {
+      disc.classList.add('is-pinned');
+      const chaps = $$('.dchap', disc), bar = $('.discover__bar i', disc);
+      // the frame is shorter than the screen, so it holds in the middle of it, for half a screen of scrolling
+      const pinEl = $('.discover__pin', disc);
+      ScrollTrigger.create({ trigger: pinEl, start: 'center center', end: '+=50%', pin: pinEl, anticipatePin: 1, invalidateOnRefresh: true });
+      // starts just before the panel settles (so the first chapter is already up when it does)
+      // and ends as the pin lets go: 12% of a screen before the pin, plus the pin's 50%
+      const tl = gsap.timeline({ scrollTrigger: { trigger: pinEl, start: 'center 62%', end: '+=62%', scrub: .4, invalidateOnRefresh: true } });
+      chaps.forEach((c, i) => {
+        const at = i * 1.3;
+        tl.fromTo(c, { autoAlpha: 0, y: 40 }, { autoAlpha: 1, y: 0, duration: .3, ease: 'power3.out' }, at);
+        if (bar) tl.to(bar, { scaleX: (i + 1) / chaps.length, duration: .3, ease: 'power2.out' }, at);
+        if (i < chaps.length - 1) tl.to(c, { autoAlpha: 0, y: -30, duration: .25, ease: 'power2.in' }, at + 1);
+      });
+      tl.to({}, { duration: .5 });
+      return () => { disc.classList.remove('is-pinned'); };
     });
-    tl.fromTo('.discover__frame', { clipPath: 'inset(35% 23% 8% 23% round 6px)' }, { clipPath: 'inset(0% 0% 0% 0% round 0px)', duration: 1, ease: 'power2.inOut' }, 0)
-      .fromTo('.discover__media', { scale: 1.25 }, { scale: 1, duration: 1.2, ease: 'none' }, 0)
-      .to('.discover__head', { autoAlpha: 0, yPercent: -40, duration: .45, ease: 'power2.in' }, 0.05)
-      .to('.discover__ui', { autoAlpha: 1, duration: .3 }, .8);
-    chaps.forEach((c, i) => {
-      const at = .9 + i * .75;
-      tl.fromTo(c, { autoAlpha: 0, y: 40 }, { autoAlpha: 1, y: 0, duration: .3, ease: 'power3.out' }, at);
-      if (i < chaps.length - 1) tl.to(c, { autoAlpha: 0, y: -30, duration: .25, ease: 'power2.in' }, at + .5);
+    /* phones and short screens: the chapters are stacked and rise in one by one */
+    mm.add('(max-width: 899px), (max-height: 599px)', () => {
+      $$('.dchap', disc).forEach(el => {
+        gsap.from(el, { autoAlpha: 0, y: 40, duration: 1.1, ease: 'power3.out', scrollTrigger: { trigger: el, start: 'top 88%', once: true } });
+      });
     });
-    tl.to({}, { duration: .4 });
-    return () => { sec.classList.remove('is-pinned'); };
-  });
+  }
 
   /* settle */
   const refresh = () => ScrollTrigger.refresh();

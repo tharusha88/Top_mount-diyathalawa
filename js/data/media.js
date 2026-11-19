@@ -13,9 +13,9 @@ window.TMR_MEDIA = {
    "fallback": "assets/media/img/hero-poster-1200.jpg",
    "w": 1920,
    "h": 1080,
-   "alt": "An A-frame villa above the tea fields, wrapped in morning mist",
-   "color": "#53593d",
-   "pos": "50% 45%"
+   "alt": "A two-storey timber cabana with a green roof and wooden balconies among the trees",
+   "color": "#474838",
+   "pos": "40% 50%"
   },
   "hero-poster-tall": {
    "base": "assets/media/img/hero-poster-tall",
@@ -26,8 +26,8 @@ window.TMR_MEDIA = {
    "fallback": "assets/media/img/hero-poster-tall-768.jpg",
    "w": 768,
    "h": 1080,
-   "alt": "An A-frame villa above the tea fields, wrapped in morning mist",
-   "color": "#4b4f38",
+   "alt": "A two-storey timber cabana with a green roof and wooden balconies among the trees",
+   "color": "#645d4f",
    "pos": "50% 50%"
   },
   "estate-golden": {
@@ -45,22 +45,6 @@ window.TMR_MEDIA = {
    "alt": "Cabanas and villas scattered across the wooded estate in early golden light",
    "color": "#424e42",
    "pos": "50% 60%"
-  },
-  "misty-villa": {
-   "base": "assets/media/img/misty-villa",
-   "widths": [
-    480,
-    800,
-    1200,
-    1800,
-    1920
-   ],
-   "fallback": "assets/media/img/misty-villa-1200.jpg",
-   "w": 1920,
-   "h": 1080,
-   "alt": "Morning mist drifting over the tea slopes beside an A-frame villa",
-   "color": "#52573d",
-   "pos": "50% 45%"
   },
   "lawn-court": {
    "base": "assets/media/img/lawn-court",
@@ -110,6 +94,19 @@ window.TMR_MEDIA = {
    "color": "#49543d",
    "pos": "50% 50%"
   },
+  "aerial-poster-tall": {
+   "base": "assets/media/img/aerial-poster-tall",
+   "widths": [
+    480,
+    768
+   ],
+   "fallback": "assets/media/img/aerial-poster-tall-768.jpg",
+   "w": 768,
+   "h": 1080,
+   "alt": "Looking straight down on the estate's green roofs, paths and terraces",
+   "color": "#44533a",
+   "pos": "50% 50%"
+  },
   "cabana-forest": {
    "base": "assets/media/img/cabana-forest",
    "widths": [
@@ -125,22 +122,6 @@ window.TMR_MEDIA = {
    "alt": "A two-storey wooden cabana with a green roof and branch-rail balcony among the trees",
    "color": "#5b5b37",
    "pos": "45% 45%"
-  },
-  "villa-facade": {
-   "base": "assets/media/img/villa-facade",
-   "widths": [
-    480,
-    800,
-    1200,
-    1800,
-    2400
-   ],
-   "fallback": "assets/media/img/villa-facade-1200.jpg",
-   "w": 4096,
-   "h": 3072,
-   "alt": "The white villa building with stacked balconies on a green hillside",
-   "color": "#536751",
-   "pos": "55% 40%"
   },
   "villa-aerial": {
    "base": "assets/media/img/villa-aerial",
@@ -190,22 +171,6 @@ window.TMR_MEDIA = {
    "color": "#4d5b3b",
    "pos": "45% 50%"
   },
-  "villa-drone": {
-   "base": "assets/media/img/villa-drone",
-   "widths": [
-    480,
-    800,
-    1200,
-    1800,
-    2400
-   ],
-   "fallback": "assets/media/img/villa-drone-1200.jpg",
-   "w": 4096,
-   "h": 3072,
-   "alt": "Drone view of the villa building with its green A-frame roof and terraces",
-   "color": "#4f4d3c",
-   "pos": "55% 45%"
-  },
   "estate-aerial": {
    "base": "assets/media/img/estate-aerial",
    "widths": [
@@ -235,22 +200,6 @@ window.TMR_MEDIA = {
    "alt": "A long covered veranda with timber chairs and tables beside the rooms",
    "color": "#a2948a",
    "pos": "50% 60%"
-  },
-  "cabana-palms": {
-   "base": "assets/media/img/cabana-palms",
-   "widths": [
-    480,
-    800,
-    1200,
-    1800,
-    2400
-   ],
-   "fallback": "assets/media/img/cabana-palms-1200.jpg",
-   "w": 6000,
-   "h": 4000,
-   "alt": "A log cabana with a branch-rail balcony behind young palms, under a blue sky",
-   "color": "#697d54",
-   "pos": "45% 40%"
   },
   "timber-stair": {
    "base": "assets/media/img/timber-stair",
@@ -284,8 +233,8 @@ window.TMR_MEDIA = {
    "color": "#92a78a",
    "pos": "45% 50%"
   },
-  "hillside-house": {
-   "base": "assets/media/img/hillside-house",
+  "hl-valley-terrace": {
+   "base": "assets/media/img/hl-valley-terrace",
    "widths": [
     480,
     800,
@@ -293,12 +242,92 @@ window.TMR_MEDIA = {
     1800,
     2400
    ],
-   "fallback": "assets/media/img/hillside-house-1200.jpg",
-   "w": 4032,
-   "h": 3024,
-   "alt": "A white, green-roofed building set into the forested hillside",
-   "color": "#4b5c3b",
-   "pos": "50% 55%"
+   "fallback": "assets/media/img/hl-valley-terrace-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "An open-sided terrace with a garden swing and timber benches, looking across the wooded valley",
+   "color": "#787d6f",
+   "pos": "38% 55%"
+  },
+  "hl-aframe-room": {
+   "base": "assets/media/img/hl-aframe-room",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800,
+    2400
+   ],
+   "fallback": "assets/media/img/hl-aframe-room-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "A timber-lined A-frame room with two double beds and slatted benches at their feet",
+   "color": "#884e36",
+   "pos": "50% 62%"
+  },
+  "hl-elephant-wall": {
+   "base": "assets/media/img/hl-elephant-wall",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800,
+    2400
+   ],
+   "fallback": "assets/media/img/hl-elephant-wall-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "An elephant in relief on a clay wall, beside tree-trunk seats on a timber veranda hung with lanterns",
+   "color": "#81531e",
+   "pos": "46% 55%"
+  },
+  "hl-villa-veranda": {
+   "base": "assets/media/img/hl-villa-veranda",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800,
+    2400
+   ],
+   "fallback": "assets/media/img/hl-villa-veranda-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "A long marble-floored veranda with a timber dining table and chairs beside the rooms",
+   "color": "#92887b",
+   "pos": "52% 62%"
+  },
+  "hl-aframe-loft": {
+   "base": "assets/media/img/hl-aframe-loft",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800,
+    2400
+   ],
+   "fallback": "assets/media/img/hl-aframe-loft-1200.jpg",
+   "w": 4000,
+   "h": 6000,
+   "alt": "Four beds laid out under the sloping timber roof of an A-frame loft",
+   "color": "#714e33",
+   "pos": "50% 58%"
+  },
+  "hl-sigiriya-mural": {
+   "base": "assets/media/img/hl-sigiriya-mural",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800,
+    2400
+   ],
+   "fallback": "assets/media/img/hl-sigiriya-mural-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Sigiriya-style maidens painted in earth tones on the wall beside a room door",
+   "color": "#aeaa9b",
+   "pos": "64% 50%"
   },
   "cabin-bedroom": {
    "base": "assets/media/img/cabin-bedroom",
@@ -347,38 +376,6 @@ window.TMR_MEDIA = {
    "color": "#9d8141",
    "pos": "40% 55%"
   },
-  "mud-veranda": {
-   "base": "assets/media/img/mud-veranda",
-   "widths": [
-    480,
-    800,
-    1200,
-    1800,
-    2000
-   ],
-   "fallback": "assets/media/img/mud-veranda-1200.jpg",
-   "w": 2000,
-   "h": 1333,
-   "alt": "Lanterns hanging over the clay veranda of the Mud House",
-   "color": "#aa833a",
-   "pos": "50% 45%"
-  },
-  "mural": {
-   "base": "assets/media/img/mural",
-   "widths": [
-    480,
-    800,
-    1200,
-    1800,
-    2000
-   ],
-   "fallback": "assets/media/img/mural-1200.jpg",
-   "w": 2000,
-   "h": 1333,
-   "alt": "A hand-painted, fresco-style mural of two figures beside a room entrance",
-   "color": "#aaa494",
-   "pos": "60% 50%"
-  },
   "room-window": {
    "base": "assets/media/img/room-window",
    "widths": [
@@ -408,35 +405,6 @@ window.TMR_MEDIA = {
    "alt": "A villa family room with two beds and a door out to the balcony",
    "color": "#a7a198",
    "pos": "50% 55%"
-  },
-  "room-twin": {
-   "base": "assets/media/img/room-twin",
-   "widths": [
-    480,
-    800,
-    1200,
-    1416
-   ],
-   "fallback": "assets/media/img/room-twin-1200.jpg",
-   "w": 1416,
-   "h": 1066,
-   "alt": "A twin room with two single beds and striped throws",
-   "color": "#cdcacb",
-   "pos": "50% 55%"
-  },
-  "balcony": {
-   "base": "assets/media/img/balcony",
-   "widths": [
-    480,
-    800,
-    960
-   ],
-   "fallback": "assets/media/img/balcony-960.jpg",
-   "w": 960,
-   "h": 1280,
-   "alt": "A balcony with a table for two overlooking the fields",
-   "color": "#858775",
-   "pos": "50% 60%"
   },
   "veranda": {
    "base": "assets/media/img/veranda",
@@ -469,22 +437,6 @@ window.TMR_MEDIA = {
    "color": "#85917f",
    "pos": "50% 40%"
   },
-  "dining-crop": {
-   "base": "assets/media/img/dining-crop",
-   "widths": [
-    480,
-    800,
-    1200,
-    1800,
-    2000
-   ],
-   "fallback": "assets/media/img/dining-crop-1200.jpg",
-   "w": 2000,
-   "h": 1215,
-   "alt": "The dining deck among the treetops",
-   "color": "#798878",
-   "pos": "50% 50%"
-  },
   "campfire": {
    "base": "assets/media/img/campfire",
    "widths": [
@@ -511,19 +463,6 @@ window.TMR_MEDIA = {
    "alt": "Food sizzling on a row of grills as friends gather in the smoke and low evening sun",
    "color": "#40433c",
    "pos": "50% 55%"
-  },
-  "peacock-poster": {
-   "base": "assets/media/img/peacock-poster",
-   "widths": [
-    480,
-    576
-   ],
-   "fallback": "assets/media/img/peacock-poster-576.jpg",
-   "w": 576,
-   "h": 1024,
-   "alt": "A peacock perched on a balcony rail at the resort",
-   "color": "#676d5d",
-   "pos": "50% 50%"
   },
   "near-idalgashinna": {
    "base": "assets/media/img/near-idalgashinna",
@@ -726,33 +665,1196 @@ window.TMR_MEDIA = {
    "h": 1345,
    "alt": "A narrow road winding through steep green hills",
    "color": "#44492f"
+  },
+  "room-101-01": {
+   "base": "assets/media/img/room-101-01",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-101-01-1200.jpg",
+   "w": 4032,
+   "h": 3024,
+   "alt": "The timber cabana on its wooded slope",
+   "color": "#5b5b37"
+  },
+  "room-101-02": {
+   "base": "assets/media/img/room-101-02",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-101-02-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Timber room with a staircase and a carved door",
+   "color": "#643c1e"
+  },
+  "room-101-03": {
+   "base": "assets/media/img/room-101-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-101-03-1200.jpg",
+   "w": 4032,
+   "h": 3024,
+   "alt": "The cabana's green roof among the trees",
+   "color": "#4d5b3b"
+  },
+  "room-101-04": {
+   "base": "assets/media/img/room-101-04",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-101-04-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Carved elephant panel and timber seating",
+   "color": "#81531e"
+  },
+  "room-101-05": {
+   "base": "assets/media/img/room-101-05",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-101-05-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "The cabana and its balcony from the garden",
+   "color": "#697d54"
+  },
+  "room-101-06": {
+   "base": "assets/media/img/room-101-06",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-101-06-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Timber staircase up to the loft",
+   "color": "#623c1c"
+  },
+  "room-101-07": {
+   "base": "assets/media/img/room-101-07",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-101-07-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Balcony seating looking out over the hills",
+   "color": "#75623d"
+  },
+  "room-101-08": {
+   "base": "assets/media/img/room-101-08",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-101-08-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Timber table on the balcony above the valley",
+   "color": "#81613b"
+  },
+  "room-101-09": {
+   "base": "assets/media/img/room-101-09",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-101-09-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Bathroom with a painted tree mural",
+   "color": "#616055"
+  },
+  "room-102-02": {
+   "base": "assets/media/img/room-102-02",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-102-02-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Bedroom with a double bed and long curtains",
+   "color": "#7e604d"
+  },
+  "room-102-04": {
+   "base": "assets/media/img/room-102-04",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-102-04-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Bedroom desk, wardrobe and door",
+   "color": "#a58167"
+  },
+  "room-102-06": {
+   "base": "assets/media/img/room-102-06",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-102-06-1200.jpg",
+   "w": 5472,
+   "h": 3648,
+   "alt": "Timber bedroom with a carved elephant panel",
+   "color": "#70523d"
+  },
+  "room-103-03": {
+   "base": "assets/media/img/room-103-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-103-03-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Timber room with a green elephant mural and a round table",
+   "color": "#745534"
+  },
+  "room-103-05": {
+   "base": "assets/media/img/room-103-05",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-103-05-1200.jpg",
+   "w": 3648,
+   "h": 5472,
+   "alt": "Bathroom",
+   "color": "#927858"
+  },
+  "room-104-01": {
+   "base": "assets/media/img/room-104-01",
+   "widths": [
+    480,
+    800,
+    1066
+   ],
+   "fallback": "assets/media/img/room-104-01-1066.jpg",
+   "w": 1066,
+   "h": 1600,
+   "alt": "Bedroom with a double bed",
+   "color": "#d0c7c0"
+  },
+  "room-104-02": {
+   "base": "assets/media/img/room-104-02",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-104-02-1200.jpg",
+   "w": 1600,
+   "h": 1071,
+   "alt": "Bright bedroom with a sitting corner by the window",
+   "color": "#cccdc9"
+  },
+  "room-104-03": {
+   "base": "assets/media/img/room-104-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-104-03-1200.jpg",
+   "w": 1600,
+   "h": 1117,
+   "alt": "Bathroom with a rain shower",
+   "color": "#c3c9d0"
+  },
+  "room-104-04": {
+   "base": "assets/media/img/room-104-04",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-104-04-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Bedroom with garden windows",
+   "color": "#c8c1bb"
+  },
+  "room-104-05": {
+   "base": "assets/media/img/room-104-05",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-104-05-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Table and chairs by the window",
+   "color": "#c1c0b5"
+  },
+  "room-105-01": {
+   "base": "assets/media/img/room-105-01",
+   "widths": [
+    480,
+    800,
+    1066
+   ],
+   "fallback": "assets/media/img/room-105-01-1066.jpg",
+   "w": 1066,
+   "h": 1600,
+   "alt": "Bathroom",
+   "color": "#a5b2c0"
+  },
+  "room-105-02": {
+   "base": "assets/media/img/room-105-02",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-105-02-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Twin room with a desk and a TV",
+   "color": "#aaa7a9"
+  },
+  "room-105-03": {
+   "base": "assets/media/img/room-105-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-105-03-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Twin room with large windows",
+   "color": "#aba7a6"
+  },
+  "room-106-01": {
+   "base": "assets/media/img/room-106-01",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-106-01-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Bathroom",
+   "color": "#98a3a5"
+  },
+  "room-106-02": {
+   "base": "assets/media/img/room-106-02",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-106-02-1200.jpg",
+   "w": 1600,
+   "h": 1010,
+   "alt": "The valley from the room",
+   "color": "#626f65"
+  },
+  "room-106-03": {
+   "base": "assets/media/img/room-106-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-106-03-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Table and chairs by the window",
+   "color": "#99999c"
+  },
+  "room-106-04": {
+   "base": "assets/media/img/room-106-04",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-106-04-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Bedroom with a TV and a sitting area",
+   "color": "#999ca2"
+  },
+  "room-108-01": {
+   "base": "assets/media/img/room-108-01",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-108-01-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Twin beds by the window",
+   "color": "#cbc9cb"
+  },
+  "room-108-02": {
+   "base": "assets/media/img/room-108-02",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-108-02-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Bedroom with a desk and armchairs",
+   "color": "#969aa0"
+  },
+  "room-108-03": {
+   "base": "assets/media/img/room-108-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-108-03-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Bedroom with a dressing table",
+   "color": "#9fa1a8"
+  },
+  "room-108-04": {
+   "base": "assets/media/img/room-108-04",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-108-04-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Bedroom with a writing desk",
+   "color": "#b5b1b8"
+  },
+  "room-108-05": {
+   "base": "assets/media/img/room-108-05",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-108-05-1200.jpg",
+   "w": 1600,
+   "h": 1078,
+   "alt": "Bathroom",
+   "color": "#b0b49a"
+  },
+  "room-108-06": {
+   "base": "assets/media/img/room-108-06",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-108-06-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Terrace with two easy chairs",
+   "color": "#a7a8a9"
+  },
+  "room-110-01": {
+   "base": "assets/media/img/room-110-01",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-110-01-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Mud house veranda with clay walls and lanterns",
+   "color": "#a97f30"
+  },
+  "room-110-02": {
+   "base": "assets/media/img/room-110-02",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-110-02-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Clay-walled bedroom",
+   "color": "#976a3d"
+  },
+  "room-110-03": {
+   "base": "assets/media/img/room-110-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-110-03-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Timber bed in the clay-walled room",
+   "color": "#7f5834"
+  },
+  "room-110-04": {
+   "base": "assets/media/img/room-110-04",
+   "widths": [
+    480,
+    800,
+    1163
+   ],
+   "fallback": "assets/media/img/room-110-04-1163.jpg",
+   "w": 1163,
+   "h": 1600,
+   "alt": "Bathroom with clay walls",
+   "color": "#87643f"
+  },
+  "room-110-05": {
+   "base": "assets/media/img/room-110-05",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-110-05-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Shower beside a rock-face wall",
+   "color": "#8d6538"
+  },
+  "room-110-06": {
+   "base": "assets/media/img/room-110-06",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-110-06-1200.jpg",
+   "w": 1600,
+   "h": 995,
+   "alt": "Dressing area with a mirror",
+   "color": "#856542"
+  },
+  "room-110-07": {
+   "base": "assets/media/img/room-110-07",
+   "widths": [
+    480,
+    800,
+    1166
+   ],
+   "fallback": "assets/media/img/room-110-07-1166.jpg",
+   "w": 1166,
+   "h": 1600,
+   "alt": "Corner of the room with a mirror",
+   "color": "#9a764f"
+  },
+  "room-110-08": {
+   "base": "assets/media/img/room-110-08",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-110-08-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "The mud house from outside",
+   "color": "#7c7861"
+  },
+  "room-110-09": {
+   "base": "assets/media/img/room-110-09",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-110-09-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Sitting area with timber chairs",
+   "color": "#9c7f3d"
+  },
+  "room-111-01": {
+   "base": "assets/media/img/room-111-01",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-111-01-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Sigiriya-style mural beside the room door",
+   "color": "#aeaa9b"
+  },
+  "room-111-02": {
+   "base": "assets/media/img/room-111-02",
+   "widths": [
+    480,
+    800,
+    1172
+   ],
+   "fallback": "assets/media/img/room-111-02-1172.jpg",
+   "w": 1172,
+   "h": 1600,
+   "alt": "Bathroom",
+   "color": "#b0b6a1"
+  },
+  "room-111-03": {
+   "base": "assets/media/img/room-111-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-111-03-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Bedroom with a double bed",
+   "color": "#b8adab"
+  },
+  "room-111-04": {
+   "base": "assets/media/img/room-111-04",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-111-04-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Bedroom with a writing desk and a balcony door",
+   "color": "#a19a96"
+  },
+  "room-111-05": {
+   "base": "assets/media/img/room-111-05",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-111-05-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Bathroom with a large mirror",
+   "color": "#bab5ae"
+  },
+  "room-111-06": {
+   "base": "assets/media/img/room-111-06",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-111-06-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Bed and a round table",
+   "color": "#bda79b"
+  },
+  "room-111-07": {
+   "base": "assets/media/img/room-111-07",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-111-07-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "The villa building from outside",
+   "color": "#859180"
+  },
+  "room-112-01": {
+   "base": "assets/media/img/room-112-01",
+   "widths": [
+    480,
+    800,
+    1200,
+    1280
+   ],
+   "fallback": "assets/media/img/room-112-01-1200.jpg",
+   "w": 1280,
+   "h": 960,
+   "alt": "Bedroom with a TV",
+   "color": "#b9b3ad"
+  },
+  "room-112-02": {
+   "base": "assets/media/img/room-112-02",
+   "widths": [
+    480,
+    800,
+    960
+   ],
+   "fallback": "assets/media/img/room-112-02-960.jpg",
+   "w": 960,
+   "h": 1280,
+   "alt": "Balcony",
+   "color": "#909182"
+  },
+  "room-112-03": {
+   "base": "assets/media/img/room-112-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1280
+   ],
+   "fallback": "assets/media/img/room-112-03-1200.jpg",
+   "w": 1280,
+   "h": 960,
+   "alt": "Bedroom with balcony doors",
+   "color": "#a09d94"
+  },
+  "room-112-04": {
+   "base": "assets/media/img/room-112-04",
+   "widths": [
+    480,
+    800,
+    960
+   ],
+   "fallback": "assets/media/img/room-112-04-960.jpg",
+   "w": 960,
+   "h": 1280,
+   "alt": "Bathroom",
+   "color": "#908c84"
+  },
+  "room-114-01": {
+   "base": "assets/media/img/room-114-01",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-114-01-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Bedroom with doors to the garden",
+   "color": "#ad9d93"
+  },
+  "room-114-02": {
+   "base": "assets/media/img/room-114-02",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-114-02-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Bed and dressing table",
+   "color": "#c3ada1"
+  },
+  "room-114-03": {
+   "base": "assets/media/img/room-114-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-114-03-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Bedroom with a round table",
+   "color": "#a9978d"
+  },
+  "room-115-01": {
+   "base": "assets/media/img/room-115-01",
+   "widths": [
+    480,
+    800,
+    1200,
+    1280
+   ],
+   "fallback": "assets/media/img/room-115-01-1200.jpg",
+   "w": 1280,
+   "h": 960,
+   "alt": "Twin room with a TV",
+   "color": "#a39a8e"
+  },
+  "room-115-02": {
+   "base": "assets/media/img/room-115-02",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-115-02-1200.jpg",
+   "w": 3120,
+   "h": 4160,
+   "alt": "Bathroom",
+   "color": "#a9a69f"
+  },
+  "room-116-01": {
+   "base": "assets/media/img/room-116-01",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-116-01-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Bedroom with a timber wardrobe",
+   "color": "#a5938c"
+  },
+  "room-116-02": {
+   "base": "assets/media/img/room-116-02",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-116-02-1200.jpg",
+   "w": 1600,
+   "h": 1050,
+   "alt": "Double bed and wardrobe",
+   "color": "#aea0a0"
+  },
+  "room-116-03": {
+   "base": "assets/media/img/room-116-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-116-03-1200.jpg",
+   "w": 1600,
+   "h": 1066,
+   "alt": "Lounge with a sofa and garden doors",
+   "color": "#988582"
+  },
+  "room-116-04": {
+   "base": "assets/media/img/room-116-04",
+   "widths": [
+    480,
+    800,
+    1066
+   ],
+   "fallback": "assets/media/img/room-116-04-1066.jpg",
+   "w": 1066,
+   "h": 1600,
+   "alt": "Bathroom",
+   "color": "#b5adab"
+  },
+  "room-116-05": {
+   "base": "assets/media/img/room-116-05",
+   "widths": [
+    480,
+    800,
+    1200,
+    1600
+   ],
+   "fallback": "assets/media/img/room-116-05-1200.jpg",
+   "w": 1600,
+   "h": 1079,
+   "alt": "Sitting area with sofas",
+   "color": "#988277"
+  },
+  "room-117-01": {
+   "base": "assets/media/img/room-117-01",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-117-01-1200.jpg",
+   "w": 3120,
+   "h": 4160,
+   "alt": "Bathroom with a glass shower",
+   "color": "#7c736a"
+  },
+  "room-117-02": {
+   "base": "assets/media/img/room-117-02",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-117-02-1200.jpg",
+   "w": 3120,
+   "h": 4160,
+   "alt": "Bedroom with timber floors",
+   "color": "#726e68"
+  },
+  "room-117-03": {
+   "base": "assets/media/img/room-117-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-117-03-1200.jpg",
+   "w": 3120,
+   "h": 4160,
+   "alt": "Bedroom with a TV unit",
+   "color": "#6f6963"
+  },
+  "room-121-01": {
+   "base": "assets/media/img/room-121-01",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-121-01-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "A-frame loft with bright curtains",
+   "color": "#845822"
+  },
+  "room-121-02": {
+   "base": "assets/media/img/room-121-02",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-121-02-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Timber A-frame room with twin beds",
+   "color": "#90502b"
+  },
+  "room-121-03": {
+   "base": "assets/media/img/room-121-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-121-03-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Two double beds under a timber ceiling",
+   "color": "#884e36"
+  },
+  "room-121-04": {
+   "base": "assets/media/img/room-121-04",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-121-04-1200.jpg",
+   "w": 4000,
+   "h": 6000,
+   "alt": "The A-frame loft from end to end",
+   "color": "#714e33"
+  },
+  "room-125-01": {
+   "base": "assets/media/img/room-125-01",
+   "widths": [
+    480,
+    800,
+    960
+   ],
+   "fallback": "assets/media/img/room-125-01-960.jpg",
+   "w": 960,
+   "h": 1280,
+   "alt": "Bedroom with a marble floor",
+   "color": "#807a77"
+  },
+  "room-125-02": {
+   "base": "assets/media/img/room-125-02",
+   "widths": [
+    480,
+    800,
+    1200,
+    1280
+   ],
+   "fallback": "assets/media/img/room-125-02-1200.jpg",
+   "w": 1280,
+   "h": 960,
+   "alt": "Two beds and a mirror",
+   "color": "#a39892"
+  },
+  "room-125-03": {
+   "base": "assets/media/img/room-125-03",
+   "widths": [
+    480,
+    800,
+    960
+   ],
+   "fallback": "assets/media/img/room-125-03-960.jpg",
+   "w": 960,
+   "h": 1280,
+   "alt": "Bathroom",
+   "color": "#a3a49f"
+  },
+  "room-126-01": {
+   "base": "assets/media/img/room-126-01",
+   "widths": [
+    480,
+    800,
+    960
+   ],
+   "fallback": "assets/media/img/room-126-01-960.jpg",
+   "w": 960,
+   "h": 1280,
+   "alt": "Bedroom with a marble floor",
+   "color": "#a39f9b"
+  },
+  "room-126-03": {
+   "base": "assets/media/img/room-126-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1280
+   ],
+   "fallback": "assets/media/img/room-126-03-1200.jpg",
+   "w": 1280,
+   "h": 960,
+   "alt": "Balcony with a dining table",
+   "color": "#7b7065"
+  },
+  "room-127-01": {
+   "base": "assets/media/img/room-127-01",
+   "widths": [
+    480,
+    800,
+    1200,
+    1280
+   ],
+   "fallback": "assets/media/img/room-127-01-1200.jpg",
+   "w": 1280,
+   "h": 960,
+   "alt": "Room with two beds and a round table",
+   "color": "#908a84"
+  },
+  "room-127-03": {
+   "base": "assets/media/img/room-127-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1280
+   ],
+   "fallback": "assets/media/img/room-127-03-1200.jpg",
+   "w": 1280,
+   "h": 960,
+   "alt": "Bedroom with balcony doors",
+   "color": "#b0a9a2"
+  },
+  "room-128-01": {
+   "base": "assets/media/img/room-128-01",
+   "widths": [
+    480,
+    800,
+    960
+   ],
+   "fallback": "assets/media/img/room-128-01-960.jpg",
+   "w": 960,
+   "h": 1280,
+   "alt": "Balcony with a dining table",
+   "color": "#a1978f"
+  },
+  "room-128-02": {
+   "base": "assets/media/img/room-128-02",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-128-02-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Balcony view over the trees",
+   "color": "#7f8e7f"
+  },
+  "room-128-03": {
+   "base": "assets/media/img/room-128-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-128-03-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Room with three beds",
+   "color": "#b8b4b7"
+  },
+  "room-rose-01": {
+   "base": "assets/media/img/room-rose-01",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-rose-01-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Twin beds",
+   "color": "#a19189"
+  },
+  "room-rose-02": {
+   "base": "assets/media/img/room-rose-02",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-rose-02-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Dining table",
+   "color": "#bdae98"
+  },
+  "room-rose-03": {
+   "base": "assets/media/img/room-rose-03",
+   "widths": [
+    480,
+    800,
+    1200,
+    1800
+   ],
+   "fallback": "assets/media/img/room-rose-03-1200.jpg",
+   "w": 6000,
+   "h": 4000,
+   "alt": "Living room with sofas",
+   "color": "#8c817f"
   }
  },
  "videos": {
   "hero": {
-   "label": "Drone footage drifting over the resort's villas and cabanas in the Diyatalawa hills",
+   "label": "A drone circling slowly around a timber cabana on the wooded hillside",
    "poster": "hero-poster",
    "sources": [
+    {
+     "src": "assets/media/video/hero-1080-av1.mp4",
+     "role": "landscape",
+     "w": 1920,
+     "h": 1080,
+     "codec": "av1",
+     "type": "video/mp4; codecs=\"av01.0.08M.08\""
+    },
     {
      "src": "assets/media/video/hero-1080.mp4",
      "role": "landscape",
      "w": 1920,
      "h": 1080,
-     "type": "video/mp4"
+     "codec": "h264",
+     "type": "video/mp4; codecs=\"avc1.640028\""
+    },
+    {
+     "src": "assets/media/video/hero-720-av1.mp4",
+     "role": "landscape",
+     "w": 1280,
+     "h": 720,
+     "codec": "av1",
+     "type": "video/mp4; codecs=\"av01.0.08M.08\""
     },
     {
      "src": "assets/media/video/hero-720.mp4",
      "role": "landscape",
      "w": 1280,
      "h": 720,
-     "type": "video/mp4"
+     "codec": "h264",
+     "type": "video/mp4; codecs=\"avc1.640028\""
+    },
+    {
+     "src": "assets/media/video/hero-portrait-av1.mp4",
+     "role": "portrait",
+     "w": 608,
+     "h": 1080,
+     "codec": "av1",
+     "type": "video/mp4; codecs=\"av01.0.08M.08\""
     },
     {
      "src": "assets/media/video/hero-portrait.mp4",
      "role": "portrait",
      "w": 608,
      "h": 1080,
-     "type": "video/mp4"
+     "codec": "h264",
+     "type": "video/mp4; codecs=\"avc1.640028\""
     }
    ],
    "posterPortrait": "hero-poster-tall"
@@ -766,23 +1868,27 @@ window.TMR_MEDIA = {
      "role": "landscape",
      "w": 1920,
      "h": 1080,
-     "type": "video/mp4"
+     "codec": "h264",
+     "type": "video/mp4; codecs=\"avc1.640028\""
     },
     {
      "src": "assets/media/video/aerial-720.mp4",
      "role": "landscape",
      "w": 1280,
      "h": 720,
-     "type": "video/mp4"
+     "codec": "h264",
+     "type": "video/mp4; codecs=\"avc1.640028\""
     },
     {
      "src": "assets/media/video/aerial-portrait.mp4",
      "role": "portrait",
      "w": 608,
      "h": 1080,
-     "type": "video/mp4"
+     "codec": "h264",
+     "type": "video/mp4; codecs=\"avc1.640028\""
     }
-   ]
+   ],
+   "posterPortrait": "aerial-poster-tall"
   },
   "film": {
    "label": "The full drone film of Top Mountain Resort",
@@ -800,19 +1906,6 @@ window.TMR_MEDIA = {
      "role": "landscape",
      "w": 1280,
      "h": 720,
-     "type": "video/mp4"
-    }
-   ]
-  },
-  "peacock": {
-   "label": "A peacock on a balcony rail at the resort takes off and flies down to a roof",
-   "poster": "peacock-poster",
-   "sources": [
-    {
-     "src": "assets/media/video/peacock-portrait.mp4",
-     "role": "portrait",
-     "w": 576,
-     "h": 1024,
      "type": "video/mp4"
     }
    ]

@@ -25,11 +25,11 @@ this folder. Started anywhere else, it serves the wrong files.
 | --- | --- |
 | `index.html` | Page structure and editorial copy for every section |
 | `css/style.css` | Design tokens (colours, type scale, spacing) and all layouts |
-| `js/data/content.js` | Stays, prices, experiences, dining, gallery, nearby places, contacts, reviews |
+| `js/data/content.js` | Highlights, stays, prices, experiences, dining, gallery, nearby places, contacts, reviews |
 | `js/data/media.js` | **Generated** media manifest. Don't edit by hand |
-| `js/media.js` | Turns a media key into a responsive `<picture>` or a viewport-aware `<video>` |
+| `js/media.js` | Turns a media key into a responsive `<picture>` or a viewport-aware `<video>`. Background videos start loading only after the page has loaded |
 | `js/render.js` | Builds the data-driven sections from `content.js` |
-| `js/main.js` | Navigation, menu, booking enquiry, lightbox, rail, and all animation |
+| `js/main.js` | Navigation, menu, booking enquiry, lightbox, highlights slideshow, rail, and all animation |
 | `tools/media.config.json` | Every photo and video the site uses: source file, alt text, focal point |
 | `tools/build_media.py` | Builds optimised images and videos plus the manifest |
 
@@ -38,8 +38,10 @@ a key defined in `tools/media.config.json`.
 
 ## Changing photos or videos
 
-1. Put the original in `D:/Projects/New folder/Resourses` (or the old site's
-   `assets` folder). Both locations are listed under `sources` in the config.
+1. Put the original in `D:/Projects/New folder` (prefix `new:`),
+   `D:/Projects/New folder/Resourses` (`res:`) or the old site's `assets`
+   folder (`legacy:`). These locations are listed under `sources` in the config.
+   The originals stay there; only the optimised copies go into this project.
 2. Add or edit an entry in `tools/media.config.json`: a key, `src` (or `frame` +
    `time` to use a still from a video), `alt`, and optionally `pos` (focal point).
 3. Run the build. It needs Pillow, plus ffmpeg for videos and video stills
@@ -50,6 +52,17 @@ python tools/build_media.py
 ```
 
 Only missing or out-of-date files are rebuilt. Add `--force` to rebuild everything.
+Editing the config marks every file as out of date, so to rebuild just what you
+changed, name the keys: `python tools/build_media.py --key hero --key hero-poster`.
+
+A video variant with an `av1` block also gets an AV1 copy, about 20–30% smaller
+than the H.264 file at the same quality. Browsers that decode AV1 smoothly get it;
+the rest get H.264. AV1 needs an ffmpeg with `libaom-av1` and is slow to encode
+(about 8 minutes for the 16-second hero).
+
+The hero's bitrates are set for a VMAF of about 90 against the original (good,
+with no visible blockiness). Lowering `crf`/`maxrate` makes smaller files but
+softer, blockier footage: this drone video is dense foliage, which needs bitrate.
 
 4. To use the new key, reference it in `content.js` (stays, gallery and so on)
    or in `index.html` with `data-img="key"`.

@@ -31,7 +31,7 @@
   $$('[data-contact="address"]').forEach(el => { el.innerHTML = ct.address.map(esc).join('<br>'); });
   $$('[data-contact="maps"]').forEach(a => { a.href = ct.mapsUrl; });
   $$('[data-contact="whatsapp"]').forEach(a => {
-    if (!ct.whatsapp) { a.remove(); return; }
+    if (!ct.whatsapp) { (a.closest('.foot__actions > li') || a).remove(); return; }
     a.href = `https://wa.me/${ct.whatsapp}`;
   });
   $$('[data-contact="socials"]').forEach(el => {
@@ -39,38 +39,51 @@
     el.innerHTML = ct.socials.map(s => `<a href="${esc(s.href)}" target="_blank" rel="noopener">${esc(s.label)} ${ext}</a>`).join('');
   });
 
-  /* ---------- stays ---------- */
-  // rates at a glance
-  into('rates', C.stays.map(s => `
-    <li><a href="#stay-${s.id}"><span class="rates__name">${esc(s.name)}</span><i aria-hidden="true"></i><b>${esc(s.from)}</b></a></li>`).join(''));
-  $$('[data-render="rates-note"]').forEach(el => { el.textContent = C.ratesNote || ''; });
-
-  // floating stays: two staggered columns on desktop (each stay spans two rows,
-  // starting one row after the previous one), a single column on phones
-  into('stays', C.stays.map((s, i) => {
-    const side = i % 2 ? 'right' : 'left';
-    return `
-    <li class="room room--${side}" id="stay-${s.id}" style="--r:${i + 1}" aria-labelledby="stay-${s.id}-t">
-      <div class="room__visual" data-float-in>
-        <figure class="room__photo" data-drift="${side === 'left' ? 26 : 40}">
-          <div class="room__frame">${picture(s.photo, { sizes: `(min-width: 900px) ${side === 'left' ? 46 : 38}vw, 92vw` })}</div>
-          <p class="room__price"><span>From</span>${esc(s.from)}</p>
-        </figure>
-        ${s.detail ? `<figure class="room__detail" data-drift="${side === 'left' ? 70 : 84}">${picture(s.detail, { sizes: '(min-width: 900px) 16vw, 40vw' })}</figure>` : ''}
+  /* ---------- highlights: expanding photo panels at the end of the estate intro ---------- */
+  const hls = C.highlights || [];
+  window.TMR.highlightItems = hls;
+  if (!hls.length) $$('[data-hl]').forEach(el => el.remove());
+  $$('[data-render="highlights"]').forEach(el => el.style.setProperty('--n', hls.length));
+  into('highlights', hls.map((h, i) => `
+    <li class="hl-item${i === 0 ? ' is-active' : ''}" data-i="${i}">
+      <button type="button" class="hl-item__btn" data-highlight="${i}" aria-label="${esc(h.title)}: open the photo full screen">
+        <span class="hl-item__img">${picture(h.image, { sizes: '(min-width: 900px) 54vw, (min-width: 600px) 60vw, 84vw', alt: '' })}</span>
+        <span class="hl-item__shade" aria-hidden="true"></span>
+        <span class="hl-item__tab" aria-hidden="true"><b>${pad(i + 1)}</b><span>${esc(h.title)}</span></span>
+      </button>
+      <div class="hl-item__cap">
+        <p class="hl-item__num"><span class="hl-reveal"><span>No. ${pad(i + 1)}</span></span></p>
+        <h4 class="hl-item__title"><span class="hl-reveal"><span>${esc(h.title)}</span></span></h4>
+        <p class="hl-item__text"><span class="hl-reveal"><span>${esc(h.text)}</span></span></p>
       </div>
-      <div class="room__body">
-        <p class="room__kind"><span>${pad(i + 1)}</span>${esc(s.kind)}</p>
-        <h3 class="room__name" id="stay-${s.id}-t">${esc(s.name)}</h3>
-        <p class="room__tag">${esc(s.tagline)}</p>
-        ${s.desc ? `<p class="room__desc">${esc(s.desc)}</p>` : ''}
-        <ul class="room__specs">${[s.size, s.guests, s.view].filter(Boolean).map(x => `<li>${esc(x)}</li>`).join('')}</ul>
-        <a class="link-arrow" href="#book" data-stay="${esc(s.name)}">Enquire about this stay ${arrow}</a>
+      <span class="hl-item__bar" aria-hidden="true"><i></i></span>
+    </li>`).join(''));
+
+  /* ---------- accommodation: one row of five floating rooms; "Show more" adds five at a time ---------- */
+  const rooms = (C.rooms || []).filter(r => r.photos && r.photos.length);
+  window.TMR.roomItems = rooms;
+  const ROOMS_STEP = 5;
+  window.TMR.roomsFirst = ROOMS_STEP;
+  const gridIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 4.5h6v6h-6zM13.5 4.5h6v6h-6zM4.5 13.5h6v6h-6zM13.5 13.5h6v6h-6z"/></svg>';
+  into('rooms', rooms.map((r, i) => {
+    const n = r.photos.length;
+    const [kicker, label] = /^\d+$/.test(r.id) ? ['Room', r.id] : [r.kicker || '', r.label || r.name];
+    // li: slides in · .rcard__float: bobs gently (--i offsets each card's rhythm) · button: lifts on hover
+    return `
+    <li class="rcard" style="--i:${i}"${i >= ROOMS_STEP ? ' hidden' : ''}>
+      <div class="rcard__float">
+        <button type="button" class="rcard__btn" data-room="${i}" aria-label="${esc(r.name)}: view all ${n} photos">
+          <span class="rcard__img">${picture(r.photos[0], { sizes: '(min-width: 900px) 20vw, (min-width: 600px) 36vw, 64vw', alt: '' })}</span>
+          <span class="rcard__shade" aria-hidden="true"></span>
+          <span class="rcard__label" aria-hidden="true"><span class="rcard__kicker">${esc(kicker)}</span><span class="rcard__num${/^\d+$/.test(label) ? '' : ' rcard__num--name'}">${esc(label)}</span></span>
+          <span class="rcard__more" aria-hidden="true">${gridIcon}<span class="rcard__count">${n}</span><span class="rcard__cta">View photos</span></span>
+        </button>
       </div>
     </li>`;
   }).join(''));
+  $$('[data-render="rooms-total"]').forEach(el => { el.textContent = rooms.length; });
 
-  into('amenities', C.amenities.map(a => `
-    <li><svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[a.icon] || ''}</svg>${esc(a.label)}</li>`).join(''));
+  into('foot-stays', C.stays.map(s => `<li><a href="#stay">${esc(s.name)}</a></li>`).join(''));
 
   // booking select
   $$('[data-render="stay-options"]').forEach(sel => {
@@ -78,48 +91,33 @@
     sel.insertAdjacentHTML('beforeend', names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join(''));
   });
 
-  /* ---------- experiences ---------- */
-  into('experiences', C.experiences.map((e, i) => `
-    <li class="exp-item${i === 0 ? ' is-active' : ''}" data-i="${i}">
-      <figure class="exp-item__img">${picture(e.image, { sizes: '100vw' })}</figure>
-      <div class="exp-item__row">
-        <span class="exp-item__num">${pad(i + 1)}</span>
-        <div>
-          <h3 class="exp-item__name">${esc(e.name)}</h3>
-          <p class="exp-item__text">${esc(e.text)}</p>
-        </div>
-        <span class="exp-item__when">${esc(e.when)}</span>
+  /* ---------- experiences & dining: photo cards, a 3 × 2 grid beside the intro from 1100px, a swipeable rail below that.
+     The two tabs (Experiences, Dining) each fill the same grid, so switching never changes the section's height ---------- */
+  // reveal: scroll-in effects for the cards shown first; the Dining cards animate in when their tab opens
+  const xpCard = (e, i, reveal = true) => `
+    <li class="xp">
+      <figure class="xp__fig"${reveal ? ' data-reveal="clip"' : ''}>
+        <div class="parallax"${reveal ? ' data-parallax="0.06"' : ''}>${picture(e.image, { sizes: '(min-width: 1100px) 22vw, 340px' })}</div>
+      </figure>
+      <div class="xp__body"${reveal ? ' data-fade' : ''}>
+        <p class="xp__meta"><span class="xp__num">${pad(i + 1)}</span><span class="xp__when">${esc(e.when)}</span></p>
+        <h3 class="xp__name">${esc(e.name)}</h3>
+        <p class="xp__text">${esc(e.text)}</p>
       </div>
-    </li>`).join(''));
-  into('exp-stage', C.experiences.map((e, i) => `
-    <figure class="exp-stage__fig${i === 0 ? ' is-active' : ''}" data-i="${i}">${picture(e.image, { sizes: '(min-width: 900px) 42vw, 100vw', alt: '' })}</figure>`).join(''));
+    </li>`;
+  const xps = C.experiences || [];
+  into('experiences', xps.map((e, i) => xpCard(e, i)).join(''));
+  $$('[data-render="experiences-total"]').forEach(el => { el.textContent = pad(xps.length); });
 
-  /* ---------- craft ---------- */
-  into('craft', C.craft.map((c, i) => `
-    <article class="craft-item craft-item--${i + 1}">
-      <figure class="craft-item__fig" data-reveal="clip"><div class="parallax" data-parallax="0.08">${picture(c.image, { sizes: i === 0 ? '(min-width: 900px) 55vw, 100vw' : '(min-width: 900px) 40vw, 100vw' })}</div></figure>
-      <div class="craft-item__text" data-fade>
-        <span class="craft-item__num">${pad(i + 1)}</span>
-        <h3 class="craft-item__title">${esc(c.title)}</h3>
-        <p>${esc(c.text)}</p>
+  const places = C.diningPlaces || [], menu = C.dining || [];
+  into('dining-cards', places.map((e, i) => xpCard(e, i, false)).join('') + (menu.length ? `
+    <li class="xp xp--menu">
+      <div class="xp__menu">
+        <p class="xp__meta"><span class="xp__num">${pad(places.length + 1)}</span><span class="xp__when">On the table</span></p>
+        <ol class="xp__menulist">${menu.map((d, i) => `<li><span>${pad(i + 1)}</span>${esc(d)}</li>`).join('')}</ol>
       </div>
-    </article>`).join(''));
-
-  into('dining', C.dining.map((d, i) => `<li data-fade><span>${pad(i + 1)}</span>${esc(d)}</li>`).join(''));
-
-  /* ---------- gallery ---------- */
-  const galleryItems = C.gallery.map(g => {
-    const m = window.TMR.image(g.image) || {};
-    return { ...g, alt: g.caption || m.alt || '' };
-  });
-  window.TMR.galleryItems = galleryItems;
-  into('gallery', galleryItems.map((g, i) => `
-    <li class="g-item" style="--c:${g.c};--r:${g.r};--mc:${g.mc};--mr:${g.mr}" data-reveal="clip">
-      <button type="button" class="g-btn" data-gallery="${i}" aria-label="${g.video ? 'Play video' : 'Open photo'}: ${esc(g.alt)}">
-        ${picture(g.image, { sizes: `(min-width: 900px) ${Math.round(g.c / 12 * 100)}vw, ${g.mc === 2 ? 100 : 50}vw`, alt: '' })}
-        ${g.video ? '<span class="g-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5-11-6.5Z"/></svg></span>' : ''}
-      </button>
-    </li>`).join(''));
+    </li>` : ''));
+  $$('[data-render="dining-total"]').forEach(el => { el.textContent = pad(places.length + (menu.length ? 1 : 0)); });
 
   /* ---------- location & nearby ---------- */
   into('location', C.location.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join(''));

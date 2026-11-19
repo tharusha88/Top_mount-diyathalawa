@@ -1,6 +1,9 @@
 # Local editor/app config (machine-specific paths)
 .claude/
 
+# Half-finished media build outputs
+*.part.*
+
 # Python
 __pycache__/
 *.pyc

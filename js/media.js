@@ -14,6 +14,12 @@
 
   const srcset = m => m.widths.map(w => `${m.base}-${w}.webp ${w}w`).join(', ');
 
+  /* Photos below the first screen are held back: their file addresses wait in data- attributes until
+     the page itself has loaded and the photo is near the screen (see watchDeferred below), so they never
+     compete with the hero for bandwidth. The browser's own loading="lazy" starts far too early for that
+     (1250-2500px ahead). Eager photos (the hero) load straight away. */
+  const canDefer = 'IntersectionObserver' in window;
+
   /** <picture> markup for a key. opts: sizes, alt, cls, eager, priority */
   const picture = (key, opts = {}) => {
     const m = image(key);
@@ -21,9 +27,11 @@
     const alt = opts.alt !== undefined ? opts.alt : m.alt;
     const sizes = opts.sizes || '100vw';
     const pos = m.pos ? `object-position:${m.pos};` : '';
-    return `<picture class="pic ${opts.cls || ''}" style="--ph:${m.color}">` +
-      `<source type="image/webp" srcset="${srcset(m)}" sizes="${esc(sizes)}">` +
-      `<img src="${m.fallback}" width="${m.w}" height="${m.h}" alt="${esc(alt)}"` +
+    const defer = canDefer && !opts.eager;
+    const a = defer ? 'data-' : '';
+    return `<picture class="pic ${opts.cls || ''}" style="--ph:${m.color}"${defer ? ' data-defer' : ''}>` +
+      `<source type="image/webp" ${a}srcset="${srcset(m)}" sizes="${esc(sizes)}">` +
+      `<img ${a}src="${m.fallback}" width="${m.w}" height="${m.h}" alt="${esc(alt)}"` +
       ` style="${pos}" decoding="async" loading="${opts.eager ? 'eager' : 'lazy'}"` +
       `${opts.priority ? ' fetchpriority="high"' : ''}>` +
       `</picture>`;
@@ -37,20 +45,48 @@
     return `${m.base}-${w}.webp`;
   };
 
-  const saveData = !!(navigator.connection && navigator.connection.saveData);
+  const conn = navigator.connection || {};
+  const saveData = !!conn.saveData;
+  const slowNet = /2g$/.test(conn.effectiveType || '');  // 'slow-2g' / '2g': keep the poster, don't autoplay
+  const lightNet = saveData || conn.effectiveType === '3g'; // take the lightest file
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  /** Pick a source for a video key based on the viewport. */
-  const videoSource = (key, el) => {
+  /* Background videos wait for the page itself (poster, fonts, scripts) to finish
+     loading, so they never compete with it for bandwidth. */
+  const pageLoaded = new Promise(r => document.readyState === 'complete' ? r() : addEventListener('load', r, { once: true }));
+
+  /* AV1 files are 20-30% smaller than H.264 at the same quality. Use them only where the
+     browser decodes them smoothly, and on phones only with hardware decoding. */
+  const AV1 = 'video/mp4; codecs="av01.0.08M.08"';
+  let av1Ok = false, av1Check = null;
+  const checkAv1 = () => av1Check || (av1Check = (async () => {
+    const mc = navigator.mediaCapabilities;
+    if (!mc || !mc.decodingInfo || !document.createElement('video').canPlayType(AV1)) return false;
+    try {
+      const r = await mc.decodingInfo({ type: 'file', video: { contentType: AV1, width: 1920, height: 1080, bitrate: 1300000, framerate: 30 } });
+      return r.supported && r.smooth && (r.powerEfficient || !matchMedia('(pointer: coarse)').matches);
+    } catch { return false; }
+  })().then(ok => (av1Ok = ok)));
+
+  /**
+   * Pick a source for a video key based on the viewport (and AV1 support, once known).
+   * background: a muted loop behind a dark scrim (hero, Discover). Its size is judged in screen points,
+   * not device pixels, so screens up to about 1450px wide take the 720p file (half the weight of 1080p,
+   * and no visible difference under the scrim); only larger screens take 1080p.
+   */
+  const videoSource = (key, el, av1 = av1Ok, background = false) => {
     const v = M.videos[key];
     if (!v || !v.sources.length) return null;
-    const box = el ? el.getBoundingClientRect() : { width: innerWidth, height: innerHeight };
+    const hasAv1 = av1 && v.sources.some(s => s.codec === 'av1');
+    const pool = v.sources.filter(s => (s.codec === 'av1') === hasAv1);
+    // layout size (offsetWidth), so an entrance animation's scale doesn't make the box look bigger than it is
+    const box = el ? (el.offsetWidth ? { width: el.offsetWidth, height: el.offsetHeight } : el.getBoundingClientRect()) : { width: innerWidth, height: innerHeight };
     const portraitBox = box.height > box.width * 1.1;
-    const portrait = v.sources.filter(s => s.role === 'portrait');
-    const landscape = v.sources.filter(s => s.role !== 'portrait').sort((a, b) => a.w - b.w);
+    const portrait = pool.filter(s => s.role === 'portrait');
+    const landscape = pool.filter(s => s.role !== 'portrait').sort((a, b) => a.w - b.w);
     if ((portraitBox && portrait.length) || !landscape.length) return portrait[0];
-    const need = box.width * Math.min(devicePixelRatio || 1, 2);
-    return (saveData ? landscape[0] : landscape.find(s => s.w >= need * 0.9)) || landscape[landscape.length - 1];
+    const need = background ? box.width * .88 : box.width * Math.min(devicePixelRatio || 1, 2) * .9;
+    return (lightNet ? landscape[0] : landscape.find(s => s.w >= need)) || landscape[landscape.length - 1];
   };
 
   /** Fill a [data-img] placeholder. */
@@ -67,7 +103,8 @@
   /**
    * Fill a [data-video] placeholder with a muted, looping background video.
    * The poster image is rendered as a normal <picture> underneath so the
-   * frame is never empty, and the video only loads when it is near the viewport.
+   * frame is never empty. The video only loads once the page has finished
+   * loading and the placeholder is near the viewport, and plays only while visible.
    */
   const fillVideo = el => {
     const key = el.dataset.video;
@@ -88,18 +125,28 @@
     video.setAttribute('preload', 'none');
     video.setAttribute('aria-label', v.label || '');
     video.className = 'bgvideo';
+    // crop the video exactly like its poster, so the fade from one to the other doesn't shift
+    const posterPos = posterKey && M.images[posterKey] && M.images[posterKey].pos;
+    if (posterPos) video.style.objectPosition = posterPos;
     el.appendChild(video);
     el.tmrVideo = video;
 
-    const allowAuto = !saveData && !reduceMotion;
+    const allowAuto = !saveData && !slowNet && !reduceMotion;
+    // without autoplay, only the play button starts the video, and it is on screen when pressed
+    let visible = !allowAuto;
+    const play = () => { if (video.dataset.src && visible && !el.dataset.paused) video.play().catch(() => {}); };
     const load = () => {
       if (video.dataset.loaded) return;
-      const s = videoSource(key, el);
-      if (!s) return;
       video.dataset.loaded = '1';
-      video.src = s.src;
-      video.preload = 'auto';
-      video.addEventListener('playing', () => el.classList.add('is-playing'), { once: true });
+      Promise.all([pageLoaded, checkAv1()]).then(([, av1]) => {
+        const s = videoSource(key, el, av1, true);
+        if (!s) return;
+        video.addEventListener('playing', () => el.classList.add('is-playing'), { once: true });
+        video.dataset.src = s.src;
+        video.src = s.src;
+        video.preload = 'auto';
+        play();
+      });
     };
     el.tmrLoad = load;
 
@@ -107,19 +154,58 @@
     // load when near, play only while visible
     new IntersectionObserver(entries => {
       entries.forEach(e => {
-        if (e.isIntersecting) {
-          load();
-          if (!el.dataset.paused) video.play().catch(() => {});
-        } else if (video.dataset.loaded) {
-          video.pause();
-        }
+        visible = e.isIntersecting;
+        if (visible) { load(); play(); }
+        else if (video.dataset.src) video.pause();
       });
     }, { rootMargin: '250px 0px' }).observe(el);
+  };
+
+  /* Held-back photos: one watcher for all of them. Before the page has loaded, only a photo that is
+     actually on screen (a deep link, say) loads; afterwards anything within about a screen of the
+     viewport does. Photos in a sideways row (marked data-defer-group) load as a whole row once the
+     row comes near, so cards that drift or are swiped into view are never blank. Hidden cards
+     (more rooms, the other tab) keep loading="lazy", so they still wait until they are shown. */
+  const revealGroup = group => {
+    const pics = group.matches('picture[data-defer]') ? [group] : [...group.querySelectorAll('picture[data-defer]')];
+    pics.forEach(pic => {
+      pic.querySelectorAll('source[data-srcset]').forEach(src => { src.srcset = src.dataset.srcset; src.removeAttribute('data-srcset'); });
+      const img = pic.querySelector('img[data-src]');
+      if (img) {
+        // in a sideways row, cards still off to the side load now too (the row may drift them into view);
+        // hidden cards (more rooms, the other tab) stay lazy, so they wait until they are shown
+        if (group !== pic && !pic.closest('[hidden]')) img.loading = 'eager';
+        img.src = img.dataset.src; img.removeAttribute('data-src');
+      }
+      pic.removeAttribute('data-defer');
+    });
+  };
+  let deferIO = null, pageIsLoaded = document.readyState === 'complete';
+  const watched = new Set();
+  const watchDeferred = root => {
+    if (!canDefer) return;
+    if (!deferIO) {
+      deferIO = new IntersectionObserver(entries => entries.forEach(e => {
+        if (!e.isIntersecting) return;
+        const r = e.boundingClientRect, onScreen = r.top < innerHeight && r.bottom > 0;
+        if (!pageIsLoaded && !onScreen) return;
+        deferIO.unobserve(e.target); watched.delete(e.target);
+        revealGroup(e.target);
+      }), { rootMargin: '50% 0px 100% 0px' });
+      // once the page has loaded, look again at everything still waiting
+      pageLoaded.then(() => { pageIsLoaded = true; watched.forEach(g => { deferIO.unobserve(g); deferIO.observe(g); }); });
+    }
+    root.querySelectorAll('picture[data-defer]').forEach(pic => {
+      const group = pic.closest('[data-defer-group]') || pic;
+      if (watched.has(group)) return;
+      watched.add(group); deferIO.observe(group);
+    });
   };
 
   const hydrate = (root = document) => {
     root.querySelectorAll('[data-img]:not([data-hydrated])').forEach(el => { el.dataset.hydrated = '1'; fillImage(el); });
     root.querySelectorAll('[data-video]:not([data-hydrated])').forEach(el => { el.dataset.hydrated = '1'; fillVideo(el); });
+    watchDeferred(root);
   };
 
   window.TMR = Object.assign(window.TMR || {}, { media: M, image, picture, best, videoSource, hydrate, esc, saveData, reduceMotion });

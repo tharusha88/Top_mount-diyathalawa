@@ -20,6 +20,20 @@ window.TMR_CONTENT = {
   },
 
   /*
+    Highlights: the expanding photo panels at the end of the estate introduction.
+    Shown in this order; the first one opens first. Photos come from
+    D:/Projects/New folder/New folder (keys in tools/media.config.json).
+  */
+  highlights: [
+    { image: 'hl-valley-terrace', title: 'The valley terrace', text: 'A garden swing and timber benches on an open terrace, with the wooded valley beyond the rail.' },
+    { image: 'hl-aframe-room', title: 'Under the timber roof', text: 'Two double beds in an A-frame room lined in polished timber from floor to ridge.' },
+    { image: 'hl-elephant-wall', title: 'The elephant wall', text: 'An elephant shaped in relief on a clay wall, with tree-trunk seats and lanterns on the veranda.' },
+    { image: 'hl-villa-veranda', title: 'A table on the veranda', text: 'Marble underfoot, pendant lamps overhead and a long timber table beside the rooms.' },
+    { image: 'hl-aframe-loft', title: 'The A-frame loft', text: 'Four beds tucked under the sloping roof, with a window at the far end.' },
+    { image: 'hl-sigiriya-mural', title: 'Sigiriya, on the wall', text: 'Maidens in the style of the Sigiriya frescoes, painted beside a room door.' }
+  ],
+
+  /*
     Every stay, shown in this order (lowest starting rate first).
     photo  = main room photo; detail = optional small floating photo (keys in tools/media.config.json).
   */
@@ -64,6 +78,34 @@ window.TMR_CONTENT = {
       photo: 'timber-stair'
     }
   ],
+
+  /*
+    Accommodation gallery: one tile per room, in this order. The first photo is the tile's cover;
+    the button on the tile opens all of them. Photo keys come from tools/media.config.json.
+    Numbered rooms show 'Room' over the number; others can set kicker and label (kicker over label).
+  */
+  rooms: [
+    { id: '101', name: 'Room 101', photos: ['room-101-01', 'room-101-02', 'room-101-03', 'room-101-04', 'room-101-05', 'room-101-06', 'room-101-07', 'room-101-08', 'room-101-09'] },
+    { id: '102', name: 'Room 102', photos: ['room-102-02', 'room-101-01', 'room-101-03', 'room-102-04', 'room-102-06'] },
+    { id: '103', name: 'Room 103', photos: ['room-103-03', 'room-101-01', 'room-101-03', 'room-103-05'] },
+    { id: '104', name: 'Room 104', photos: ['room-104-04', 'room-104-01', 'room-104-02', 'room-104-03', 'room-104-05'] },
+    { id: '105', name: 'Room 105', photos: ['room-105-02', 'room-105-01', 'room-105-03'] },
+    { id: '106', name: 'Room 106', photos: ['room-106-04', 'room-106-01', 'room-106-02', 'room-106-03'] },
+    { id: '108', name: 'Room 108', photos: ['room-108-02', 'room-108-01', 'room-108-03', 'room-108-04', 'room-108-05', 'room-108-06'] },
+    { id: '110', name: 'Room 110', photos: ['room-110-01', 'room-110-02', 'room-110-03', 'room-110-04', 'room-110-05', 'room-110-06', 'room-110-07', 'room-110-08', 'room-110-09'] },
+    { id: '111', name: 'Room 111', photos: ['room-111-03', 'room-111-01', 'room-111-02', 'room-111-04', 'room-111-05', 'room-111-06', 'room-111-07'] },
+    { id: '112', name: 'Room 112', photos: ['room-112-03', 'room-112-01', 'room-112-02', 'room-112-04', 'room-111-07'] },
+    { id: '114', name: 'Room 114', photos: ['room-114-01', 'room-114-02', 'room-114-03'] },
+    { id: '115', name: 'Room 115', photos: ['room-115-01', 'room-115-02'] },
+    { id: '116', name: 'Room 116', photos: ['room-116-01', 'room-116-02', 'room-116-03', 'room-116-04', 'room-116-05'] },
+    { id: '117', name: 'Room 117', photos: ['room-117-02', 'room-117-01', 'room-117-03'] },
+    { id: '121', name: 'Room 121', photos: ['room-121-02', 'room-121-01', 'room-121-03', 'room-121-04'] },
+    { id: '125', name: 'Room 125', photos: ['room-125-02', 'room-125-01', 'room-125-03'] },
+    { id: '126', name: 'Room 126', photos: ['room-126-01', 'room-125-03', 'room-126-03'] },
+    { id: '127', name: 'Room 127', photos: ['room-127-03', 'room-127-01', 'room-125-03'] },
+    { id: '128', name: 'Room 128', photos: ['room-128-03', 'room-128-01', 'room-128-02'] },
+    { id: 'rose', name: 'Rose Bungalow', kicker: 'Bungalow', label: 'Rose', photos: ['room-rose-01', 'room-rose-02', 'room-rose-03'] }
+  ],
   ratesNote: 'Starting rates. Your exact rate is confirmed when you enquire.',
 
   amenities: [
@@ -84,12 +126,6 @@ window.TMR_CONTENT = {
     { name: 'Badminton', text: 'Rackets out for a game of evening badminton.', image: 'villa-aerial', when: 'Games' }
   ],
 
-  craft: [
-    { title: 'Timber', text: 'Log walls and branch-cut railings on the wooden cabanas, and stairs built by hand inside.', image: 'timber-stair' },
-    { title: 'Clay', text: 'Hand-finished clay and a living rock face in the Mud House.', image: 'mud-lounge' },
-    { title: 'Lantern light', text: 'Hanging lanterns on every veranda, lit as the mist comes in.', image: 'mud-veranda' },
-    { title: 'Handmade murals', text: 'Fresco-style figures painted straight onto the wall.', image: 'mural' }
-  ],
 
   dining: [
     'Sri Lankan curries',
@@ -98,21 +134,14 @@ window.TMR_CONTENT = {
     'Sunset Ceylon tea'
   ],
 
-  // c/r = columns/rows spanned on the 12-column desktop grid; mc/mr = the same on the 2-column mobile grid.
-  gallery: [
-    { image: 'estate-golden', c: 7, r: 4, mc: 2, mr: 2 },
-    { image: 'timber-stair', c: 5, r: 4, mc: 1, mr: 2 },
-    { image: 'mud-veranda', c: 3, r: 3, mc: 1, mr: 1 },
-    { video: 'peacock', image: 'peacock-poster', c: 3, r: 3, mc: 1, mr: 2, caption: 'A peacock on a balcony rail, filmed at the resort' },
-    { image: 'cabana-palms', c: 6, r: 3, mc: 1, mr: 1 },
-    { image: 'misty-villa', c: 5, r: 4, mc: 2, mr: 2 },
-    { image: 'mural', c: 4, r: 2, mc: 1, mr: 1 },
-    { image: 'veranda-tables', c: 3, r: 4, mc: 1, mr: 2 },
-    { image: 'cabin-bedroom', c: 4, r: 2, mc: 1, mr: 1 },
-    { image: 'villa-drone', c: 4, r: 3, mc: 2, mr: 2 },
-    { image: 'dining-deck', c: 4, r: 3, mc: 1, mr: 1 },
-    { image: 'valley-aerial', c: 4, r: 3, mc: 1, mr: 1 }
+  // the Dining tab of the experiences section: these photo cards, then an "On the table" card listing `dining`
+  diningPlaces: [
+    { name: 'The dining deck', text: 'An open-air pavilion raised above the rooms, among palms and trees.', image: 'dining-deck', when: 'The deck' },
+    { name: 'Campfire BBQ', text: 'Food sizzling on the grills in the low evening sun.', image: 'bbq', when: 'Evenings' },
+    { name: 'Sunset Ceylon tea', text: 'A pot of Ceylon tea as the light goes, looking out to the hills.', image: 'veranda', when: 'Sunset' },
+    { name: 'The long veranda', text: 'Timber chairs and tables beside the rooms.', image: 'veranda-tables', when: 'Close to the rooms' }
   ],
+
 
   location: [
     ['Town', 'Diyatalawa'],

@@ -8,11 +8,16 @@ No page or script refers to a media file by path; everything goes through a key.
   python tools/build_media.py                 # build what is missing or out of date
   python tools/build_media.py --force         # rebuild everything
   python tools/build_media.py --only images   # or: --only videos
+  python tools/build_media.py --key hero --key hero-poster   # only these keys; the rest keep their manifest entries
   python tools/build_media.py --ffmpeg C:/path/to/ffmpeg.exe
 
 Needs Pillow (pip install pillow). Videos and video stills also need ffmpeg:
 on PATH, in the FFMPEG environment variable, passed with --ffmpeg, or from
 the imageio-ffmpeg package.
+
+A video variant with an "av1" block also gets an AV1 copy (20-30% smaller at
+the same quality, used by browsers that decode it well). That needs an ffmpeg with libaom-av1; without
+it the AV1 copy is skipped and the site uses the H.264 file.
 """
 import argparse
 import json
@@ -21,12 +26,19 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from PIL import Image, ImageOps
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "tools" / "media.config.json"
+
+# MIME types with codecs, so the browser can check support before downloading
+TYPES = {
+    "h264": 'video/mp4; codecs="avc1.640028"',
+    "av1": 'video/mp4; codecs="av01.0.08M.08"',
+}
 
 
 # ---------------------------------------------------------------- helpers
@@ -60,6 +72,36 @@ def stale(outputs, inputs, force):
         return True
     newest_in = max(Path(i).stat().st_mtime for i in inputs)
     return min(o.stat().st_mtime for o in outs) < newest_in
+
+
+def part_path(dest):
+    """Temporary name to write an output under before it replaces the real file."""
+    return dest.with_name(f"{dest.stem}.part{dest.suffix}")
+
+
+def swap_in(part, dest, tries=20):
+    """Move a finished file into place. Windows can briefly hold an existing file
+    open (virus scan, search indexer, a browser reading it), so retry for a while.
+    The real file is only ever replaced whole, so the site never sees a half-written one."""
+    for attempt in range(tries):
+        try:
+            os.replace(part, dest)
+            return
+        except OSError:
+            if attempt == tries - 1:
+                part.unlink(missing_ok=True)
+                raise SystemExit(f"Could not replace {rel(dest)}: another program keeps it open. Close it and run again.")
+            time.sleep(0.5)
+
+
+_encoders = {}
+
+
+def has_encoder(ffmpeg, name):
+    if ffmpeg not in _encoders:
+        res = subprocess.run([ffmpeg, "-hide_banner", "-encoders"], capture_output=True, text=True)
+        _encoders[ffmpeg] = res.stdout
+    return f" {name} " in _encoders[ffmpeg]
 
 
 def run(cmd):
@@ -103,7 +145,9 @@ def build_image(key, spec, cfg, sources, ffmpeg, force, tmpdir):
         im = im.crop((round(x0 * w), round(y0 * h), round(x1 * w), round(y1 * h)))
     w, h = im.size
 
-    widths = [x for x in cfg["imageWidths"] if x < w] + [min(w, cfg["imageWidths"][-1])]
+    # an entry can cap its own sizes ("widths": [480, 800, 1200, 1800]) instead of the global list
+    steps = spec.get("widths") or cfg["imageWidths"]
+    widths = [x for x in steps if x < w] + [min(w, steps[-1])]
     widths = sorted(set(widths))
     fb_w = min(cfg["fallbackWidth"], w)
 
@@ -111,9 +155,13 @@ def build_image(key, spec, cfg, sources, ffmpeg, force, tmpdir):
     if stale(outputs, inputs, force):
         for x in widths:
             r = im if x == w else im.resize((x, round(h * x / w)), Image.LANCZOS)
-            r.save(out_dir / f"{key}-{x}.webp", "WEBP", quality=cfg["webpQuality"], method=6)
+            dest = out_dir / f"{key}-{x}.webp"
+            r.save(part_path(dest), "WEBP", quality=cfg["webpQuality"], method=6)
+            swap_in(part_path(dest), dest)
         r = im if fb_w == w else im.resize((fb_w, round(h * fb_w / w)), Image.LANCZOS)
-        r.save(out_dir / f"{key}-{fb_w}.jpg", "JPEG", quality=cfg["jpgQuality"], optimize=True, progressive=True)
+        dest = out_dir / f"{key}-{fb_w}.jpg"
+        r.save(part_path(dest), "JPEG", quality=cfg["jpgQuality"], optimize=True, progressive=True)
+        swap_in(part_path(dest), dest)
         print(f"  img  {key:20s} {w}x{h} -> {widths}")
     else:
         print(f"  ok   {key}")
@@ -173,31 +221,50 @@ def build_video(key, spec, cfg, sources, ffmpeg, force):
         entry["posterPortrait"] = spec["posterPortrait"]
 
     for var in spec["variants"]:
-        dest = out_dir / f"{key}-{var['id']}.mp4"
-        if stale([dest], [src, CONFIG], force):
-            if not ffmpeg:
-                raise SystemExit(f"Video '{key}' needs ffmpeg")
-            cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
-                   "-filter_complex", video_filter(spec, var), "-map", "[v]"]
-            if spec.get("audio") and not spec.get("segments"):
-                cmd += ["-map", "0:a?", "-c:a", "aac", "-b:a", "128k"]
+        outputs = [("h264", out_dir / f"{key}-{var['id']}.mp4")]
+        if var.get("av1"):
+            if ffmpeg and has_encoder(ffmpeg, "libaom-av1"):
+                outputs.insert(0, ("av1", out_dir / f"{key}-{var['id']}-av1.mp4"))
             else:
-                cmd += ["-an"]
-            cmd += ["-c:v", "libx264", "-preset", "slow", "-crf", str(var.get("crf", 26)),
-                    "-profile:v", "high", "-pix_fmt", "yuv420p", "-tag:v", "avc1",
-                    "-movflags", "+faststart"]
-            if var.get("maxrate"):
-                rate = var["maxrate"]
-                buf = f"{float(rate.rstrip('M')) * 2:g}M"
-                cmd += ["-maxrate", rate, "-bufsize", buf]
-            cmd.append(str(dest))
-            print(f"  vid  {dest.name} ...", flush=True)
-            run(cmd)
-            print(f"       {dest.stat().st_size / 1e6:.1f} MB")
-        else:
-            print(f"  ok   {dest.name}")
-        entry["sources"].append({"src": rel(dest), "role": var.get("role", "landscape"),
-                                 "w": var["w"], "h": var["h"], "type": "video/mp4"})
+                print(f"  skip {key}-{var['id']}-av1.mp4 (this ffmpeg has no libaom-av1)")
+
+        for codec, dest in outputs:
+            if stale([dest], [src, CONFIG], force):
+                if not ffmpeg:
+                    raise SystemExit(f"Video '{key}' needs ffmpeg")
+                cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
+                       "-filter_complex", video_filter(spec, var), "-map", "[v]"]
+                if spec.get("audio") and not spec.get("segments"):
+                    cmd += ["-map", "0:a?", "-c:a", "aac", "-b:a", "128k"]
+                else:
+                    cmd += ["-an"]
+                if codec == "av1":
+                    # constrained quality: crf sets the look, -b:v caps the bitrate
+                    av1 = var["av1"]
+                    cmd += ["-c:v", "libaom-av1", "-cpu-used", "6", "-row-mt", "1", "-tiles", "2x2",
+                            "-crf", str(av1.get("crf", 36)), "-b:v", av1.get("maxrate", "0"),
+                            "-g", "150", "-pix_fmt", "yuv420p"]
+                else:
+                    cmd += ["-c:v", "libx264", "-preset", "slow", "-crf", str(var.get("crf", 26)),
+                            "-profile:v", "high", "-pix_fmt", "yuv420p", "-tag:v", "avc1"]
+                    if var.get("maxrate"):
+                        rate = var["maxrate"]
+                        buf = f"{float(rate.rstrip('M')) * 2:g}M"
+                        cmd += ["-maxrate", rate, "-bufsize", buf]
+                part = part_path(dest)
+                cmd += ["-movflags", "+faststart", str(part)]
+                print(f"  vid  {dest.name} ...", flush=True)
+                try:
+                    run(cmd)
+                except SystemExit:
+                    part.unlink(missing_ok=True)
+                    raise
+                swap_in(part, dest)
+                print(f"       {dest.stat().st_size / 1e6:.1f} MB")
+            else:
+                print(f"  ok   {dest.name}")
+            entry["sources"].append({"src": rel(dest), "role": var.get("role", "landscape"),
+                                     "w": var["w"], "h": var["h"], "codec": codec, "type": TYPES[codec]})
     return entry
 
 
@@ -208,6 +275,8 @@ def main():
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--only", choices=["images", "videos"])
     ap.add_argument("--ffmpeg")
+    ap.add_argument("--key", action="append",
+                    help="build only this key (repeatable); other keys keep their current manifest entry")
     args = ap.parse_args()
 
     cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
@@ -226,19 +295,26 @@ def main():
 
     images = previous.get("images", {})
     videos = previous.get("videos", {})
+    unknown = set(args.key or []) - set(cfg["images"]) - set(cfg["videos"])
+    if unknown:
+        raise SystemExit(f"Unknown key(s): {', '.join(sorted(unknown))}")
+
+    def skip(key, prev):
+        # with --key, leave every other key exactly as it was (if it was built before)
+        return bool(args.key) and key not in args.key and key in prev
 
     if args.only != "videos":
         print("Images")
-        images = {}
+        prev, images = images, {}
         with tempfile.TemporaryDirectory() as tmp:
             for key, spec in cfg["images"].items():
-                images[key] = build_image(key, spec, cfg, sources, ffmpeg, args.force, tmp)
+                images[key] = prev[key] if skip(key, prev) else build_image(key, spec, cfg, sources, ffmpeg, args.force, tmp)
 
     if args.only != "images":
         print("Videos")
-        videos = {}
+        prev, videos = videos, {}
         for key, spec in cfg["videos"].items():
-            videos[key] = build_video(key, spec, cfg, sources, ffmpeg, args.force)
+            videos[key] = prev[key] if skip(key, prev) else build_video(key, spec, cfg, sources, ffmpeg, args.force)
 
     manifest = {"images": images, "videos": videos}
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
