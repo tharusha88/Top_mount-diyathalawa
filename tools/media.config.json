@@ -8,9 +8,10 @@
   },
 
   "output": {
-    "images": "assets/media/img",
-    "videos": "assets/media/video",
-    "manifest": "js/data/media.js"
+    "webroot": "public",
+    "images": "public/assets/media/img",
+    "videos": "public/assets/media/video",
+    "manifest": "public/js/data/media.js"
   },
 
   "imageWidths": [480, 800, 1200, 1800, 2400],

@@ -237,7 +237,25 @@
     if ([...form.stay.options].some(o => o.value === v)) form.stay.value = v;
   });
   const fmt = s => parse(s).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-  form.addEventListener('submit', e => {
+  const submitBtn = $('.bform__submit', form), submitHtml = submitBtn.innerHTML;
+  const BOOT = window.BOOT || {};
+  const money = n => `${(BOOT.site && BOOT.site.currency) || 'LKR'} ${Number(n || 0).toLocaleString('en-US')}`;
+  const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+  // Asks the booking system which rooms are free. Answers null when it can't be reached (or the page
+  // isn't served by index.php), so the guest can still call or message instead.
+  const roomsFor = async (a, l) => {
+    if (!window.BOOT) return null;
+    try {
+      const r = await fetch(`/api/availability?${new URLSearchParams({ kind: 'room', checkIn: a, checkOut: l })}`, { headers: { Accept: 'application/json' } });
+      const data = await r.json().catch(() => ({}));
+      if (r.ok && Array.isArray(data.rooms)) return { rooms: data.rooms };
+      if (r.status === 400 && data.error) return { error: data.error }; // e.g. a stay longer than allowed
+      return null;
+    } catch (_) { return null; }
+  };
+
+  form.addEventListener('submit', async e => {
     e.preventDefault();
     const a = form.checkin.value, l = form.checkout.value;
     err.textContent = '';
@@ -246,12 +264,51 @@
     if (l <= a) { err.textContent = 'Your check-out date needs to be after your check-in date.'; form.checkout.focus(); return; }
     const nights = Math.round((parse(l) - parse(a)) / 864e5);
     const ad = +form.adults.value, ch = +form.children.value;
-    const guests = `${ad} adult${ad > 1 ? 's' : ''}${ch ? `, ${ch} child${ch > 1 ? 'ren' : ''}` : ''}`;
-    const stay = form.stay.value || 'Any stay';
-    $('.bresult__summary', result).textContent = `${stay} · ${fmt(a)} to ${fmt(l)} · ${nights} night${nights > 1 ? 's' : ''} · ${guests}`;
+    const guests = `${plural(ad, 'adult')}${ch ? `, ${ch} child${ch > 1 ? 'ren' : ''}` : ''}`;
+    const stay = form.stay.value;
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Checking availability…';
+    const answer = await roomsFor(a, l);
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = submitHtml;
+    if (answer && answer.error) { err.textContent = answer.error; return; }
+
+    let status, note, canBook = false;
+    if (!answer) {
+      status = 'Your enquiry';
+      note = 'We couldn’t check availability just now. Call or message the resort with these details and we’ll confirm with you directly.';
+    } else {
+      // a stay picked in the form narrows the rooms once Admin → Rooms gives rooms that type
+      const ofStay = stay ? answer.rooms.filter(r => String(r.type).toLowerCase() === stay.toLowerCase()) : [];
+      const rooms = ofStay.length ? ofStay : answer.rooms;
+      const free = rooms.filter(r => r.available);
+      const fits = free.filter(r => r.capacity >= ad);
+      canBook = free.length > 0;
+      if (!canBook) {
+        status = 'Fully booked';
+        note = 'Every room is taken for those dates. Try other dates, or call or message us: we may still be able to help.';
+      } else {
+        const from = Math.min(...(fits.length ? fits : free).map(r => r.total));
+        status = `${plural(free.length, 'room')} free`;
+        note = fits.length
+          ? `From ${money(from)} for ${plural(nights, 'night')}. Choose a room and send your booking: it is confirmed once the advance is paid.`
+          : `No single room sleeps ${plural(ad, 'adult')}, so you can book more than one room, or call us and we’ll arrange it.`;
+      }
+      const q = new URLSearchParams({ kind: 'room', checkIn: a, checkOut: l, adults: ad });
+      if (ch) q.set('children', ch);
+      $('.bresult__book', result).href = `/book?${q}`;
+    }
+    $('.bresult__status', result).textContent = status;
+    $('.bresult__summary', result).textContent = `${stay || 'Any stay'} · ${fmt(a)} to ${fmt(l)} · ${plural(nights, 'night')} · ${guests}`;
+    $('.bresult__note', result).textContent = note;
+    $('.bresult__book', result).hidden = !canBook;
+    // with rooms to book, calling is the quieter option
+    $('.bresult__call', result).classList.toggle('btn--solid', !canBook);
+    $('.bresult__call', result).classList.toggle('btn--outline', canBook);
     const wa = $('.bresult__wa', result);
     if (wa && C.contact.whatsapp) {
-      const text = `Hello Top Mountain Resort, I'd like to check availability.\nStay: ${stay}\nCheck-in: ${fmt(a)}\nCheck-out: ${fmt(l)} (${nights} night${nights > 1 ? 's' : ''})\nGuests: ${guests}`;
+      const text = `Hello Top Mountain Resort, I'd like to check availability.\nStay: ${stay || 'Any stay'}\nCheck-in: ${fmt(a)}\nCheck-out: ${fmt(l)} (${plural(nights, 'night')})\nGuests: ${guests}`;
       wa.href = `https://wa.me/${C.contact.whatsapp}?text=${encodeURIComponent(text)}`;
     }
     form.hidden = true; result.hidden = false;
@@ -882,10 +939,19 @@
     return { ready: () => { st.ready = true; syncPlay(); } };
   })();
 
-  /* ================= MOBILE BOOKING BAR ================= */
+  /* ================= PHONE CONTACT BAR (call / WhatsApp) =================
+     Slides in once the hero has opened and stays on screen, except over the booking
+     form and the footer (both have their own call and WhatsApp buttons). On short
+     landscape phones it also waits until the hero has scrolled away, as there is no
+     room for it beside the hero's buttons. */
   const mbar = $('.mbar');
   const vis = { hero: true, book: false, foot: false };
-  const syncBar = () => mbar.classList.toggle('is-on', !vis.hero && !vis.book && !vis.foot);
+  const shortScreen = matchMedia('(max-height: 520px) and (orientation: landscape)');
+  let barReady = false;
+  const syncBar = () => mbar.classList.toggle('is-on',
+    barReady && !(vis.hero && shortScreen.matches) && !vis.book && !vis.foot);
+  setTimeout(() => { barReady = true; syncBar(); }, 1400);
+  if (shortScreen.addEventListener) shortScreen.addEventListener('change', syncBar);
   new IntersectionObserver(es => es.forEach(e => {
     const k = e.target === hero ? 'hero' : e.target.id === 'book' ? 'book' : 'foot';
     vis[k] = e.isIntersecting; syncBar();

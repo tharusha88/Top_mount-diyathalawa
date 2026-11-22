@@ -1,6 +1,21 @@
 # Local editor/app config (machine-specific paths)
 .claude/
 
+# bookings database (SQLite), email outbox, session secret
+/data/
+# settings with passwords
+.env
+# build output (the zip contains a generated .env)
+dist/
+# temporary files from the photo library
+public/media/*.lock
+public/media/*.tmp
+# database exports (guest details and the admin password hash): only the check script is kept
+database/*
+!database/check-database.sql
+# production settings with the live database password
+hosting/production.env
+
 # Half-finished media build outputs
 *.part.*
 

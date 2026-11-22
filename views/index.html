@@ -9,8 +9,10 @@
 <meta property="og:title" content="Top Mountain Resort · Diyatalawa, Sri Lanka">
 <meta property="og:description" content="Timber cabanas, a clay mud house and bright villas on a 3-acre estate in the pine hills of Diyatalawa.">
 <meta property="og:type" content="website">
-<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<script>
+<link rel="icon" href="/assets/icons/favicon.ico" sizes="48x48">
+<link rel="icon" href="/assets/icons/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+<script nonce="{{nonce}}">
   (function (d) {
     var h = d.documentElement;
     h.classList.remove('no-js'); h.classList.add('js');
@@ -24,7 +26,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
 
@@ -34,15 +36,7 @@
 <header class="nav" id="nav">
   <div class="nav__inner">
     <a class="brand" href="#top" aria-label="Top Mountain Resort, back to top">
-      <svg class="brand__mark" viewBox="0 0 40 40" aria-hidden="true">
-        <circle class="brand__sun" cx="27.5" cy="11.5" r="4"/>
-        <path d="M3.5 31.5 15 15.5l6.4 9 4.3-5.6 10.8 12.6"/>
-        <path d="M15 21.5v10M12.2 25.6 15 22.8l2.8 2.8"/>
-      </svg>
-      <span class="brand__text">
-        <span class="brand__name">Top Mountain</span>
-        <span class="brand__sub">Resort · Diyatalawa</span>
-      </span>
+      <span class="logo brand__logo" aria-hidden="true"></span>
     </a>
     <nav class="nav__links" aria-label="Main">
       <ul>
@@ -274,7 +268,7 @@
         <span class="ln"><span>The hills</span></span>
         <span class="ln"><span>are <em>waiting.</em></span></span>
       </h2>
-      <p class="book__lede" data-fade>Choose your dates and stay, and we'll confirm availability and rates with you directly.</p>
+      <p class="book__lede" data-fade>Choose your dates to see which rooms are free, then book online in a few minutes. No payment is taken online.</p>
 
       <form class="bform" novalidate data-fade>
         <div class="bform__grid">
@@ -315,12 +309,15 @@
         <p class="bform__error" role="alert"></p>
       </form>
 
+      <!-- the answer from the booking system (/api/availability): free rooms → the booking page;
+           nothing free, or the system can't be reached → call or WhatsApp with these details -->
       <div class="bresult" hidden tabindex="-1">
-        <p class="eyebrow">Your enquiry</p>
+        <p class="eyebrow bresult__status">Your stay</p>
         <p class="bresult__summary"></p>
-        <p class="bresult__note">To confirm, call or message the resort with these details.</p>
+        <p class="bresult__note"></p>
         <div class="bresult__actions">
-          <a class="btn btn--solid" data-contact="tel" href="#">Call <span data-contact="tel-label"></span></a>
+          <a class="btn btn--solid bresult__book" href="/book">Choose your room <svg class="i-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></a>
+          <a class="btn bresult__call" data-contact="tel" href="#">Call <span data-contact="tel-label"></span></a>
           <a class="btn btn--outline bresult__wa" data-contact="whatsapp" href="#" target="_blank" rel="noopener">Send on WhatsApp</a>
           <button type="button" class="link-arrow bresult__edit">Change details</button>
         </div>
@@ -403,7 +400,7 @@
     <div class="foot__top">
       <div class="foot__brand" data-fade>
         <p class="eyebrow">Diyatalawa <span aria-hidden="true">·</span> Sri Lanka</p>
-        <h2 class="foot__name" id="foot-title">Top Mountain <em>Resort</em></h2>
+        <h2 class="foot__name" id="foot-title"><span class="logo foot__logo" aria-hidden="true"></span><span class="sr-only">Top Mountain Resort</span></h2>
         <p class="foot__about">Timber cabanas, a clay-walled mud house and bright villas in the cool, pine-covered hills of Diyatalawa.</p>
       </div>
       <ul class="foot__actions" data-fade>
@@ -465,11 +462,15 @@
   </div>
 </footer>
 
-<!-- mobile booking bar -->
-<div class="mbar" aria-label="Quick booking">
-  <a class="btn btn--solid mbar__book" href="#book">Book your stay</a>
-  <a class="mbar__call" data-contact="tel" href="#" aria-label="Call the resort">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 3.5h3l1.6 4.3-2 1.3a11 11 0 0 0 6.8 6.8l1.3-2 4.3 1.6v3a2 2 0 0 1-2.2 2A17.5 17.5 0 0 1 3.5 5.7a2 2 0 0 1 2-2.2Z"/></svg>
+<!-- phone contact bar: call or WhatsApp the resort from anywhere on the page (phones and small tablets only) -->
+<div class="mbar" role="group" aria-label="Contact the resort">
+  <a class="mbar__btn mbar__btn--call" data-contact="tel" href="#">
+    <span class="mbar__ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5.5 3.5h3l1.6 4.3-2 1.3a11 11 0 0 0 6.8 6.8l1.3-2 4.3 1.6v3a2 2 0 0 1-2.2 2A17.5 17.5 0 0 1 3.5 5.7a2 2 0 0 1 2-2.2Z"/></svg></span>
+    <span class="mbar__label">Call now</span>
+  </a>
+  <a class="mbar__btn mbar__btn--wa" data-contact="whatsapp" href="#" target="_blank" rel="noopener">
+    <span class="mbar__ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20l1.3-4.3a8 8 0 1 1 3.1 3.1L4 20Z"/><path d="M9.2 9.6c.3 1.9 2.4 4 4.4 4.4"/></svg></span>
+    <span class="mbar__label">WhatsApp</span>
   </a>
 </div>
 
@@ -512,12 +513,13 @@
   </div>
 </div>
 
-<script src="js/data/media.js"></script>
-<script src="js/data/content.js"></script>
-<script src="js/media.js"></script>
-<script src="js/render.js"></script>
+<script src="/js/data/media.js"></script>
+{{boot}}
+<script src="/js/data/content.js"></script>
+<script src="/js/media.js"></script>
+<script src="/js/render.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
-<script src="js/main.js"></script>
+<script src="/js/main.js"></script>
 </body>
 </html>

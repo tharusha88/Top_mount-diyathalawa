@@ -21,6 +21,18 @@
   };
 
   /* ---------- contact ---------- */
+  // The booking system's details (Admin → Website) win over content.js, so a number changed
+  // there changes here too. window.BOOT is only there when the page is served by index.php.
+  const B = window.BOOT && window.BOOT.site;
+  if (B) {
+    const tel = String(B.phone || '').replace(/[^\d+]/g, '');
+    const first = C.contact.phones.find(p => p.primary) || C.contact.phones[0];
+    if (tel && first && first.href !== `tel:${tel}`) {
+      C.contact.phones = [{ label: B.phone, href: `tel:${tel}`, primary: true }, ...C.contact.phones.filter(p => p !== first && p.href !== `tel:${tel}`)];
+    }
+    C.contact.whatsapp = B.whatsapp || '';
+    if (window.BOOT.mapLink) C.contact.mapsUrl = window.BOOT.mapLink;
+  }
   const ct = C.contact;
   const primary = ct.phones.find(p => p.primary) || ct.phones[0];
   $$('[data-contact="tel"]').forEach(a => { a.href = primary.href; if (!a.children.length && !a.textContent.trim()) a.textContent = primary.label; });

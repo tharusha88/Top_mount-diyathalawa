@@ -1,0 +1,8 @@
+# keep line endings as they are: Linux-style for the code and the Linux POS shortcut,
+# Windows-style for the Windows POS shortcut
+* text=auto eol=lf
+*.bat text eol=crlf
+*.webp binary
+*.jpg binary
+*.png binary
+*.ico binary

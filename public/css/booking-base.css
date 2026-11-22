@@ -1,0 +1,189 @@
+/* =====================================================================
+   Top Mountain Resort · booking page base
+   The shared pieces the booking page (book.css) builds on: the redesign's palette and type under
+   the variable names book.css uses, plus buttons, header, calendar and steppers. The home page
+   (style.css) is not loaded here, so its rules can't collide with the booking page's markup.
+   ===================================================================== */
+:root {
+  /* the redesign's palette (style.css) */
+  --ivory: #F7F5EF;
+  --ivory-deep: #EEEBE2;
+  --sage: #DDE5D8;
+  --sage-deep: #CAD6C4;
+  --pine: #294B3A;
+  --pine-deep: #1E3A2C;
+  --brass: #B38B5D;
+  --brass-ink: #86663F;
+  --brass-light: #D3B690;
+
+  /* …under the names book.css uses */
+  --forest-950: #152A1F;
+  --forest-900: var(--pine-deep);
+  --forest-800: var(--pine);
+  --forest-700: #35604A;
+  --moss-500: #3F6B53;
+  --leaf-400: var(--brass-light);
+  --leaf-300: var(--brass-light);
+  --cream-50: var(--ivory);
+  --cream-100: var(--ivory-deep);
+  --cream-200: var(--sage);
+  --sand-300: var(--sage-deep);
+  --bark-800: #292D28;
+  --bark-600: var(--brass-ink);
+  --amber-400: var(--brass);
+  --amber-300: var(--brass-light);
+  --ember: #9A3B22;
+  --ink: #292D28;
+  --ink-soft: #565A53;
+  --line-dark: rgb(247 245 239 / .2);
+  --line-light: rgb(41 45 40 / .14);
+
+  --font-display: 'Cormorant Garamond', 'Cormorant', Georgia, 'Times New Roman', serif;
+  --font-body: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --radius: 6px;
+  --radius-lg: 8px;
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --container: 1240px;
+  --gutter: clamp(20px, 5vw, 64px);
+  --nav-h: 76px;
+}
+
+/* ---------- reset ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; font: 400 16px/1.65 var(--font-body); color: var(--ink); background: var(--ivory);
+  -webkit-font-smoothing: antialiased; overflow-x: hidden;
+}
+img, video, svg { display: block; max-width: 100%; }
+a { color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; border-radius: 2px; }
+::selection { background: var(--pine); color: var(--ivory); }
+.sr-only { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip { position: fixed; left: 12px; top: -60px; z-index: 200; background: var(--pine); color: var(--ivory); padding: 12px 18px; border-radius: 999px; font-weight: 600; text-decoration: none; transition: top .3s; }
+.skip:focus { top: 12px; }
+.container { width: 100%; max-width: calc(var(--container) + var(--gutter) * 2); margin: 0 auto; padding: 0 var(--gutter); }
+
+/* ---------- type ---------- */
+h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 400; line-height: 1.08; margin: 0; letter-spacing: -.01em; }
+h2 { font-size: clamp(2rem, 4vw, 3.2rem); }
+h3 { font-size: clamp(1.4rem, 2.2vw, 1.85rem); }
+em { font-style: italic; }
+p { margin: 0 0 1em; }
+.eyebrow {
+  display: inline-flex; align-items: center; gap: .9em; margin: 0 0 18px;
+  font: 600 .72rem/1.2 var(--font-body); letter-spacing: .22em; text-transform: uppercase; color: var(--brass-ink);
+}
+.eyebrow::before { content: ''; width: 28px; height: 1px; background: currentColor; opacity: .6; }
+.eyebrow--light { color: var(--brass-light); }
+.lead { font-size: clamp(1.05rem, 1.4vw, 1.2rem); color: var(--ink-soft); max-width: 58ch; }
+.linkish { background: none; border: 0; padding: 0; color: var(--pine); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+
+/* ---------- buttons: the redesign's pills ---------- */
+.btn {
+  --bg: var(--pine); --fg: var(--ivory); --fill: var(--pine-deep);
+  position: relative; isolation: isolate; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center; gap: .8em;
+  min-height: 50px; padding: 0 1.75em; border: 0; border-radius: 999px;
+  background: var(--bg); color: var(--fg); text-decoration: none;
+  font: 600 .76rem/1 var(--font-body); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap;
+  transition: color .45s var(--ease), box-shadow .45s var(--ease), transform .45s var(--ease);
+}
+.btn::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; border-radius: inherit; background: var(--fill);
+  transform: translateY(101%); transition: transform .6s var(--ease);
+}
+.btn:hover::before, .btn:focus-visible::before { transform: none; }
+.btn:active { transform: scale(.98); }
+.btn--amber { --bg: var(--pine); --fg: var(--ivory); --fill: var(--pine-deep); }
+.btn--ghost { --bg: transparent; --fg: currentColor; --fill: transparent; box-shadow: inset 0 0 0 1px currentColor; }
+.btn--ghost:hover { box-shadow: inset 0 0 0 1.5px currentColor; }
+.btn--cream { --bg: var(--ivory); --fg: var(--pine); --fill: var(--sage); }
+.btn--sm { min-height: 42px; padding: 0 1.3em; font-size: .7rem; }
+.btn--block { width: 100%; }
+.btn[disabled] { opacity: .45; pointer-events: none; }
+.btn .arrow { transition: transform .5s var(--ease); }
+.btn:hover .arrow { transform: translateX(4px); }
+
+/* ---------- header: the redesign's solid ivory bar ---------- */
+.logo {
+  display: block; aspect-ratio: 900 / 196; background-color: currentColor;
+  -webkit-mask: url(/assets/brand/logo.png) center / contain no-repeat;
+  mask: url(/assets/brand/logo.png) center / contain no-repeat;
+}
+@media (forced-colors: active) { .logo { forced-color-adjust: none; background-color: CanvasText; } }
+.nav {
+  position: fixed; inset: 0 0 auto; z-index: 100; height: var(--nav-h);
+  display: flex; align-items: center; gap: 24px; padding: 0 var(--gutter);
+  background: rgb(247 245 239 / .94); color: var(--ink);
+  backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: 0 1px 0 var(--line-light);
+}
+.nav__logo { flex: none; display: block; color: var(--pine); }
+.nav__logo .logo { height: clamp(34px, 3vw, 44px); }
+.nav__actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.nav .btn--ghost { color: var(--pine); }
+.nav .btn--ghost svg { width: 16px; height: 16px; }
+
+/* ---------- range calendar (calendar.js) ---------- */
+.cal { --cell: 44px; user-select: none; }
+.cal__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.cal__nav { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line-light); background: transparent; display: grid; place-items: center; transition: background .2s, border-color .2s; }
+.cal__nav:hover:not(:disabled) { background: var(--sage); border-color: var(--sage-deep); }
+.cal__nav:disabled { opacity: .3; cursor: default; }
+.cal__months { display: grid; grid-template-columns: repeat(var(--months, 2), 1fr); gap: 28px; }
+.cal__title { text-align: center; font-family: var(--font-display); font-size: 1.3rem; font-weight: 500; margin: 0 0 10px; }
+.cal__grid { display: grid; grid-template-columns: repeat(7, var(--cell)); justify-content: center; row-gap: 2px; }
+.cal__dow { height: 28px; display: grid; place-items: center; font-size: .66rem; font-weight: 600; letter-spacing: .12em; color: var(--ink-soft); text-transform: uppercase; }
+.cal__day {
+  position: relative; height: var(--cell); border: 0; background: none; padding: 0; font-size: .92rem; font-weight: 500; color: var(--ink);
+  display: grid; place-items: center; z-index: 0;
+}
+.cal__day::before { content: ''; position: absolute; inset: 2px; border-radius: 50%; z-index: -1; transition: background .15s; }
+.cal__day:hover:not(:disabled)::before { background: var(--sage); }
+.cal__day:disabled { color: rgb(41 45 40 / .28); cursor: default; }
+.cal__day.is-taken { color: rgb(41 45 40 / .32); text-decoration: line-through; text-decoration-color: rgb(154 59 34 / .6); }
+.cal__day.is-taken:not(:disabled) { color: var(--ink); text-decoration: none; }
+.cal__day.is-today { color: var(--brass-ink); }
+.cal__day.is-today::after { content: ''; position: absolute; bottom: 7px; width: 4px; height: 4px; border-radius: 50%; background: currentColor; }
+.cal__day.in-range { background: rgb(41 75 58 / .12); }
+.cal__day.is-start, .cal__day.is-end { color: var(--ivory); }
+.cal__day.is-start::before, .cal__day.is-end::before { background: var(--pine) !important; }
+.cal__day.is-start.has-end { background: linear-gradient(90deg, transparent 50%, rgb(41 75 58 / .12) 50%); }
+.cal__day.is-end { background: linear-gradient(90deg, rgb(41 75 58 / .12) 50%, transparent 50%); }
+.cal__day.is-blank { visibility: hidden; }
+.cal__legend { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; font-size: .78rem; color: var(--ink-soft); }
+.cal__legend span { display: inline-flex; align-items: center; gap: 6px; }
+.cal__legend i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.shake { animation: shake .4s; }
+@keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+
+/* ---------- steppers ---------- */
+.stepper-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; }
+.stepper-row + .stepper-row { border-top: 1px solid var(--line-light); }
+.stepper-row b { display: block; font-weight: 600; }
+.stepper-row small { color: var(--ink-soft); font-size: .8rem; }
+.stepper { display: flex; align-items: center; gap: 12px; }
+.stepper button { width: 40px; height: 40px; border-radius: 50%; border: 1px solid rgb(41 45 40 / .28); background: transparent; font-size: 1.1rem; line-height: 1; display: grid; place-items: center; transition: background .3s, color .3s, border-color .3s; }
+.stepper button:hover:not(:disabled) { background: var(--pine); border-color: var(--pine); color: var(--ivory); }
+.stepper button:disabled { opacity: .35; cursor: default; }
+.stepper output { min-width: 18px; text-align: center; font-weight: 600; }
+
+/* ---------- room details ---------- */
+.room__specs { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 20px; padding: 0; list-style: none; font-size: .82rem; color: var(--ink-soft); }
+.room__specs li { display: inline-flex; align-items: center; gap: 6px; }
+.room__specs svg { width: 16px; height: 16px; color: var(--brass-ink); }
+.price small { display: block; font-size: .7rem; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; }
+.price b { font-family: var(--font-display); font-weight: 500; font-size: 1.45rem; }
+.price span { font-size: .82rem; color: var(--ink-soft); }
+
+/* phones: the logo and the "back" pill share a narrow bar */
+@media (max-width: 520px) {
+  .nav { gap: 12px; }
+  .nav__logo .logo { height: 30px; }
+  .nav .btn--ghost { min-height: 38px; padding: 0 1em; letter-spacing: .08em; }
+}

@@ -2,7 +2,8 @@
 Top Mountain Resort - media build.
 
 Reads tools/media.config.json, turns the original photos and drone footage into
-web-ready files, and writes js/data/media.js: the manifest the site reads.
+web-ready files, and writes public/js/data/media.js: the manifest the site (and the booking
+system's photo library) reads.
 No page or script refers to a media file by path; everything goes through a key.
 
   python tools/build_media.py                 # build what is missing or out of date
@@ -115,6 +116,11 @@ def rel(p):
     return Path(p).resolve().relative_to(ROOT).as_posix()
 
 
+def url(p, cfg):
+    """A file's path as the website sees it: relative to the web root ("webroot" in the config)."""
+    return Path(p).resolve().relative_to(ROOT / cfg["output"].get("webroot", ".")).as_posix()
+
+
 # ---------------------------------------------------------------- images
 
 def grab_frame(ffmpeg, video, t, dest):
@@ -168,9 +174,9 @@ def build_image(key, spec, cfg, sources, ffmpeg, force, tmpdir):
 
     avg = im.resize((1, 1), Image.BOX).getpixel((0, 0))
     entry = {
-        "base": rel(out_dir / key),
+        "base": url(out_dir / key, cfg),
         "widths": widths,
-        "fallback": rel(out_dir / f"{key}-{fb_w}.jpg"),
+        "fallback": url(out_dir / f"{key}-{fb_w}.jpg", cfg),
         "w": w, "h": h,
         "alt": spec.get("alt", ""),
         "color": "#%02x%02x%02x" % avg,
@@ -263,7 +269,7 @@ def build_video(key, spec, cfg, sources, ffmpeg, force):
                 print(f"       {dest.stat().st_size / 1e6:.1f} MB")
             else:
                 print(f"  ok   {dest.name}")
-            entry["sources"].append({"src": rel(dest), "role": var.get("role", "landscape"),
+            entry["sources"].append({"src": url(dest, cfg), "role": var.get("role", "landscape"),
                                      "w": var["w"], "h": var["h"], "codec": codec, "type": TYPES[codec]})
     return entry
 

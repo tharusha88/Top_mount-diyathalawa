@@ -1,0 +1,62 @@
+# Top Mountain Resort — Apache / LiteSpeed settings for shared hosting.
+# cPanel may add its own blocks to this file; keep them.
+
+Options -Indexes -MultiViews
+DirectoryIndex index.php
+DirectorySlash Off
+
+# ---- Private files: never served, even if URL rewriting is unavailable ----
+<FilesMatch "(^\.(env|user\.ini|session-secret)|\.(db|db-wal|db-shm|sqlite|sql|log|lock|tmp|md)$)">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
+# ---- Front controller: every page and API call goes through index.php ----
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Uncomment to force https:// (or use cPanel → Domains → Force HTTPS Redirect)
+  # RewriteCond %{HTTPS} !=on
+  # RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # Let SSL certificate validation through
+  RewriteRule ^\.well-known/ - [L]
+
+  # Private folders and hidden files are answered by the site's 404 page
+  RewriteRule ^(app|views|data|database|tests)(/|$) index.php [L]
+  RewriteRule (^|/)\. index.php [L]
+
+  # Everything that isn't a real file is handled by the app
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^ index.php [L]
+</IfModule>
+
+# ---- Correct types, caching and compression for the static files ----
+<IfModule mod_mime.c>
+  AddType image/webp .webp
+  AddType font/woff2 .woff2
+</IfModule>
+
+<IfModule mod_headers.c>
+  <FilesMatch "\.(webp|png|jpe?g|mp4|woff2)$">
+    Header set Cache-Control "public, max-age=2592000"
+    Header set X-Content-Type-Options "nosniff"
+  </FilesMatch>
+  <FilesMatch "\.(css|js|json)$">
+    Header set Cache-Control "public, max-age=604800"
+    Header set X-Content-Type-Options "nosniff"
+  </FilesMatch>
+</IfModule>
+
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css text/plain text/javascript application/javascript application/json application/xml image/svg+xml
+</IfModule>
+
+# PHP limits for photo uploads live in .user.ini (or the host's PHP options), not here:
+# hosts such as Hostinger answer every PHP page with a 500 error if this file sets php_value.
