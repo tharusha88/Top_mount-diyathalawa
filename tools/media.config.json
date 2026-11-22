@@ -159,6 +159,7 @@
     "hero": {
       "src": "new:d18.mp4",
       "segments": [[5, 21]],
+      "pingpong": true,
       "audio": false,
       "poster": "hero-poster",
       "posterPortrait": "hero-poster-tall",

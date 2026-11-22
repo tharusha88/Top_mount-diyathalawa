@@ -190,6 +190,15 @@ def build_image(key, spec, cfg, sources, ffmpeg, force, tmpdir):
 
 def video_filter(spec, var):
     """Build the filter graph for one output variant."""
+    graph = _video_graph(spec, var)
+    if spec.get("pingpong"):
+        # play forward, then the same frames in reverse: a loop with no jump, and no need for the
+        # browser to play backwards (it can't), so the "rewind" is as smooth as the forward half
+        graph = graph.replace("[v]", "[fwd]") + ";[fwd]split[fa][fb];[fb]reverse[rev];[fa][rev]concat=n=2:v=1:a=0,format=yuv420p[v]"
+    return graph
+
+
+def _video_graph(spec, var):
     w, h = var["w"], var["h"]
     if var.get("role") == "portrait" and w < h:
         fx = var.get("focusX", 0.5)
