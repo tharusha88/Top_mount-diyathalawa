@@ -48,7 +48,7 @@
       <h1>Book your <em>stay</em></h1>
       <ol class="bk-steps" data-steps>
         <li data-goto="1"><span>1</span>Choose &amp; dates</li>
-        <li data-goto="2"><span>2</span>Room</li>
+        <li data-goto="2"><span>2</span>Rooms</li>
         <li data-goto="3"><span>3</span>Your details</li>
         <li data-goto="4"><span>4</span>Done</li>
       </ol>
@@ -73,6 +73,26 @@
           <p data-room-note>Pick your arrival and departure dates.</p>
         </header>
         <div class="bk-cal" data-cal></div>
+        <section class="bk-grid" data-grid aria-labelledby="grid-title">
+          <header class="bk-grid__head">
+            <div>
+              <h3 id="grid-title">Every room at a glance</h3>
+              <p data-grid-range aria-live="polite"></p>
+            </div>
+            <div class="bk-grid__nav">
+              <button type="button" class="btn btn--sm btn--ghost" data-grid-prev aria-label="Earlier dates"><svg width="16" height="16"><use href="#i-left"/></svg></button>
+              <button type="button" class="btn btn--sm btn--ghost" data-grid-today>Today</button>
+              <button type="button" class="btn btn--sm btn--ghost" data-grid-next aria-label="Later dates"><svg width="16" height="16" style="transform:scaleX(-1)"><use href="#i-left"/></svg></button>
+            </div>
+          </header>
+          <div class="bk-grid__scroll" data-grid-table tabindex="0" role="region" aria-label="Room availability by night"></div>
+          <ul class="bk-grid__legend" aria-hidden="true">
+            <li><i class="g-free">✓</i>Free</li>
+            <li><i class="g-taken">✕</i>Booked</li>
+            <li><i class="g-pick"></i>Your dates</li>
+          </ul>
+          <p class="bk-grid__hint">Tap a room name to see just that room in the calendar above. Each column is one night.</p>
+        </section>
         <div class="bk-guests" data-guests hidden>
           <div class="stepper-row"><div><b>Adults</b><small>Age 13+</small></div><div class="stepper" data-stepper="adults" data-min="1" data-max="50"><button type="button" data-dec aria-label="Fewer adults">−</button><output>2</output><button type="button" data-inc aria-label="More adults">+</button></div></div>
           <div class="stepper-row"><div><b>Children</b><small>Age 2–12 · infants are free</small></div><div class="stepper" data-stepper="children" data-min="0" data-max="30"><button type="button" data-dec aria-label="Fewer children">−</button><output>0</output><button type="button" data-inc aria-label="More children">+</button></div></div>
@@ -86,11 +106,21 @@
       <!-- STEP 2 -->
       <section class="bk-panel" data-panel="2" hidden>
         <header class="bk-panel__head">
-          <h2>Choose your room</h2>
+          <h2>Choose your rooms</h2>
           <p data-rooms-sub></p>
+          <p class="bk-panel__hint">Add one room, or several for a family or group. They're booked together, on one booking.</p>
         </header>
         <div class="bk-notice" data-party-warning hidden></div>
         <div class="bk-rooms" data-room-list></div>
+        <details class="bk-datebox" data-datebox open>
+          <summary><svg width="18" height="18"><use href="#i-cal"/></svg><span data-datebox-label>Change dates</span></summary>
+          <div class="bk-cal" data-cal2></div>
+        </details>
+        <!-- the rooms chosen so far, and the way on (one booking can hold several rooms) -->
+        <div class="bk-pickbar" data-pickbar hidden aria-live="polite">
+          <div class="bk-pickbar__text"><b data-pick-count></b><small data-pick-detail></small></div>
+          <button class="btn btn--amber" type="button" data-pick-continue>Continue <svg class="arrow" width="18" height="18"><use href="#i-arrow"/></svg></button>
+        </div>
         <div class="bk-actions">
           <button class="btn btn--ghost" type="button" data-goto="1"><svg width="16" height="16"><use href="#i-left"/></svg> Change dates</button>
         </div>

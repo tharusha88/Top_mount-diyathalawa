@@ -33,7 +33,8 @@
     checkOut: isDate(params.get('checkOut')) ? params.get('checkOut') : null,
     adults: Math.min(MAX.adults, Math.max(1, parseInt(params.get('adults'), 10) || 2)),
     children: Math.min(MAX.children, Math.max(0, parseInt(params.get('children'), 10) || 0)),
-    room: ROOMS.find((r) => r.slug === params.get('room')) || null,
+    // the rooms chosen: one booking can hold several (?room=slug or ?room=slug,slug)
+    rooms: [...new Set((params.get('room') || '').split(',').filter(Boolean))].map((slug) => ROOMS.find((r) => r.slug === slug)).filter(Boolean),
     partyArea: false,
     jblSpeaker: false,
     party: null, // party-area status for the chosen nights: { free, taken }
@@ -45,6 +46,11 @@
   const isDay = () => isPerson() && !!state.pkg && state.pkg.kind === 'day';
   const datesReady = () => (isDay() ? !!state.checkIn : !!(state.checkIn && state.checkOut));
   const people = () => state.adults + state.children;
+  const MAX_ROOMS = 10; // Bookings::MAX_ROOMS
+  const isPicked = (slug) => state.rooms.some((r) => r.slug === slug);
+  const roomsCap = () => state.rooms.reduce((sum, r) => sum + r.capacity, 0);
+  // the group size given on the home page (room bookings ask no guest numbers here): a hint only
+  const groupSize = params.has('adults') ? state.adults + state.children : 0;
   if (isDay()) state.checkOut = null;
   if (state.checkIn && state.checkIn < BOOT.today) state.checkIn = state.checkOut = null;
   if (state.checkOut && state.checkOut <= state.checkIn) state.checkIn = state.checkOut = null;
@@ -60,7 +66,7 @@
     const p = new URLSearchParams();
     p.set('kind', state.kind);
     if (isPerson() && state.pkg) p.set('package', state.pkg.id);
-    if (!isPerson() && state.room) p.set('room', state.room.slug);
+    if (!isPerson() && state.rooms.length) p.set('room', state.rooms.map((r) => r.slug).join(','));
     if (state.checkIn) p.set('checkIn', state.checkIn);
     if (state.checkOut && !isDay()) p.set('checkOut', state.checkOut);
     if (isPerson()) { p.set('adults', state.adults); if (state.children) p.set('children', state.children); }
@@ -82,10 +88,11 @@
     if (state.step === 4 && step !== 4) return; // booking already made
     if (step === 2 && isPerson()) step = state.step > 2 ? 1 : 3;
     if (step > 1 && !datesReady()) step = 1;
-    if (step > 2 && !isPerson() && !state.room) step = 2;
+    if (step > 2 && !isPerson() && !state.rooms.length) step = 2;
     state.step = step;
     $$('[data-panel]').forEach((p) => { p.hidden = Number(p.dataset.panel) !== step; });
     renderSteps();
+    if (gridLive) placeGrid();
     if (step === 3) {
       renderExtras();
       setTimeout(() => $('#f-name').focus({ preventScroll: true }), 300);
@@ -115,10 +122,9 @@
       if (state.children) lines.push([`${o.name} — children`, `${money(o.priceChild)} × ${plural(state.children, 'child', 'children')}${tail}`, o.priceChild * state.children * n, true]);
       [units, per] = isDay() ? [1, '1 day'] : [n, plural(n, 'night')];
     } else {
-      const r = state.room;
       const n = state.checkIn && state.checkOut ? countNights(state.checkIn, state.checkOut) : 0;
-      if (!r || !n) return null;
-      lines.push([r.name, `${money(r.price)} × ${plural(n, 'night')}`, r.price * n, true]);
+      if (!state.rooms.length || !n) return null;
+      state.rooms.forEach((r) => lines.push([r.name, `${money(r.price)} × ${plural(n, 'night')}`, r.price * n, true]));
       [units, per] = [n, plural(n, 'night')];
     }
     if (state.partyArea && !isDay()) lines.push(['Party area', `${money(PRICES.partyArea)} × ${per}`, PRICES.partyArea * units, false]);
@@ -133,10 +139,12 @@
   // ---------- summary ----------
   const media = $('[data-sum-media]');
   const placeholder = media.innerHTML;
+  var gridLive = false;
   function renderSummary() {
-    const r = isPerson() ? null : state.room;
+    gridPaint();
+    const r = isPerson() ? null : state.rooms[0] || null;
     $('[data-sum-eyebrow]').textContent = isDay() ? 'Your visit' : 'Your stay';
-    $('[data-sum-room]').textContent = isPerson() ? (state.pkg ? state.pkg.name : LABELS.person) : r ? r.name : 'Choose a room';
+    $('[data-sum-room]').textContent = isPerson() ? (state.pkg ? state.pkg.name : LABELS.person) : state.rooms.length > 1 ? `${state.rooms.length} rooms` : r ? r.name : 'Choose a room';
     const img = isDay() ? DAY_IMAGE : isPerson() ? PERSON_IMAGE : r ? r.images[0] : '';
     if ((media.dataset.key || '') !== img) {
       media.dataset.key = img;
@@ -147,7 +155,7 @@
     $('[data-sum-in]').textContent = state.checkIn ? fmtDate(state.checkIn, long) : '—';
     $('[data-sum-out-row]').hidden = isDay();
     $('[data-sum-out]').textContent = state.checkOut ? fmtDate(state.checkOut, long) : '—';
-    $('[data-sum-guests]').textContent = isPerson() ? guestsLabel(state.adults, state.children) : r ? `Sleeps ${r.capacity}` : '—';
+    $('[data-sum-guests]').textContent = isPerson() ? guestsLabel(state.adults, state.children) : r ? `Sleeps ${roomsCap()}` : '—';
     const extras = [!isDay() && state.partyArea && 'Party area', state.jblSpeaker && 'JBL speaker'].filter(Boolean);
     $('[data-sum-extras-row]').hidden = !extras.length;
     $('[data-sum-extras]').textContent = extras.join(', ');
@@ -178,7 +186,7 @@
       <span class="kind__sub">${esc(sub)}</span>
       <span class="kind__price">${price}</span>
     </label>`;
-    kindsBox.innerHTML = card('room', LABELS.room, `Choose your own room. Priced per room, per night${caps.length ? ` · sleeps ${Math.min(...caps)}–${Math.max(...caps)}` : ''}.`,
+    kindsBox.innerHTML = card('room', LABELS.room, `Choose one room, or several for a family or group. Priced per room, per night${caps.length ? ` · sleeps ${Math.min(...caps)}–${Math.max(...caps)}` : ''}.`,
       `<small>from</small> ${money(roomFrom)}<span class="kind__unit">per room, per night</span>`, !ROOMS.length)
       + card('per_person', LABELS.person, `${OPTIONS.map((o) => o.name).join(', ') || 'Per-person options'}. Priced per guest; we prepare rooms for your group.`,
         OPTIONS.length ? `<small>from</small> ${money(personFrom)}<span class="kind__unit">per adult</span>` : 'Not available', !OPTIONS.length);
@@ -204,6 +212,7 @@
       cal.setRange(state.checkIn, null);
     }
     $('[data-guests]').hidden = !isPerson();
+    if (gridLive) gridShow();
     renderOptions(); loadCalendar(); updateStep1(); renderSummary(); syncUrl();
   }
   function setKind(kind) {
@@ -260,21 +269,23 @@
     }
     let q = `kind=${state.kind}`;
     if (isPerson()) q += `&guests=${people()}`;
-    else if (state.room) q += `&room=${encodeURIComponent(state.room.slug)}`;
+    else if (state.rooms.length === 1) q += `&room=${encodeURIComponent(state.rooms[0].slug)}`;
     calTimer = setTimeout(() => {
       fetch(`/api/calendar?from=${BOOT.today}&to=${to}&${q}`).then((r) => r.json())
         .then((d) => { if (token === calToken) cal.setUnavailable(new Set(d.unavailable || [])); }).catch(() => {});
     }, isPerson() ? 250 : 0);
     if (isPerson()) {
       roomNote.textContent = `Pick your arrival and departure dates. Crossed-out nights don't have space for ${plural(people(), 'guest')}.`;
-    } else if (state.room) {
-      roomNote.innerHTML = `Showing availability for <b>${esc(state.room.name)}</b> (sleeps ${state.room.capacity}) — crossed-out nights are already booked. <button type="button" class="linkish" data-any-room>Show all rooms</button>`;
+    } else if (state.rooms.length > 1) {
+      roomNote.innerHTML = `Pick your dates for your <b>${state.rooms.length} rooms</b> (${esc(state.rooms.map((x) => x.name).join(', '))}). Crossed-out nights are fully booked. <button type="button" class="linkish" data-any-room>Clear the rooms</button>`;
+    } else if (state.rooms.length === 1) {
+      roomNote.innerHTML = `Showing availability for <b>${esc(state.rooms[0].name)}</b> (sleeps ${state.rooms[0].capacity}) — crossed-out nights are already booked. <button type="button" class="linkish" data-any-room>Show all rooms</button>`;
     } else {
       roomNote.textContent = 'Pick your arrival and departure dates. Crossed-out nights are fully booked.';
     }
   }
   roomNote.addEventListener('click', (e) => {
-    if (e.target.closest('[data-any-room]')) { state.room = null; loadCalendar(); renderSummary(); syncUrl(); }
+    if (e.target.closest('[data-any-room]')) { state.rooms = []; loadCalendar(); renderSummary(); syncUrl(); }
   });
   $('[data-clear-dates]').addEventListener('click', () => cal.clear());
 
@@ -289,6 +300,78 @@
   stepper($('[data-stepper="children"]'), onGuests('children'));
 
   toRooms.addEventListener('click', () => (isPerson() ? checkGroup() : findRooms()));
+
+  // ---------- all rooms at a glance (room bookings) ----------
+  const gridBox = $('[data-grid]');
+  const gridTable = $('[data-grid-table]');
+  const gridDays = () => (gridTable.clientWidth >= 720 ? 14 : 7);
+  const wk = (d, o) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', Object.assign({ timeZone: 'UTC' }, o));
+  const grid = { from: BOOT.today, rooms: null, token: 0, ready: false, n: 0 };
+
+  // the grid lives under the calendar in step 1 and above the room list in step 2
+  function placeGrid() {
+    if (state.step === 2) $('[data-datebox]').after(gridBox);
+    else $('[data-guests]').before(gridBox);
+    if (state.checkIn && state.checkIn > BOOT.today && state.checkIn !== grid.from) grid.from = state.checkIn;
+    gridShow();
+  }
+  function gridShow() { gridBox.hidden = isPerson(); if (!gridBox.hidden && grid.ready) gridLoad(); }
+  async function gridLoad() {
+    const token = ++grid.token;
+    const n = grid.n = gridDays();
+    const to = window.RangeCalendar.addDays(grid.from, n);
+    try {
+      const d = await (await fetch(`/api/room-calendar?from=${grid.from}&to=${to}`)).json();
+      if (token !== grid.token || !d.rooms) return;
+      grid.rooms = d.rooms.map((r) => Object.assign(r, { taken: new Set(r.unavailable) }));
+      gridRender();
+    } catch (e) { gridTable.innerHTML = '<p class="bk-grid__err">Could not load availability. You can still pick dates above.</p>'; }
+  }
+  function gridRender() {
+    if (!grid.rooms) return;
+    const n = grid.n;
+    const days = Array.from({ length: n }, (_, i) => window.RangeCalendar.addDays(grid.from, i));
+    $('[data-grid-range]').textContent = `${wk(days[0], { day: 'numeric', month: 'short' })} – ${wk(days[n - 1], { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    $('[data-grid-prev]').disabled = grid.from <= BOOT.today;
+    const head = days.map((d) => {
+      const dow = new Date(`${d}T00:00:00Z`).getUTCDay();
+      return `<th scope="col" class="${d === BOOT.today ? 'is-today' : ''}${dow === 0 || dow === 6 ? ' is-wknd' : ''}"><span>${wk(d, { weekday: 'short' })}</span><b>${Number(d.slice(8))}</b><small>${wk(d, { month: 'short' })}</small></th>`;
+    }).join('');
+    const rows = grid.rooms.map((r) => {
+      const cells = days.map((d) => {
+        const taken = r.taken.has(d);
+        const mine = state.checkIn && state.checkOut && d >= state.checkIn && d < state.checkOut;
+        return `<td class="${taken ? 'is-taken' : 'is-free'}${mine ? ' is-pick' : ''}" aria-label="${esc(r.name)}, ${wk(d, { weekday: 'long', day: 'numeric', month: 'long' })}: ${taken ? 'booked' : 'available'}">${taken ? '✕' : '✓'}</td>`;
+      }).join('');
+      const sel = isPicked(r.slug);
+      return `<tr><th scope="row"><button type="button" class="${sel ? 'is-on' : ''}" data-grid-room="${esc(r.slug)}" aria-pressed="${sel}"><b>${esc(r.name)}</b><small>Sleeps ${r.capacity}</small></button></th>${cells}</tr>`;
+    }).join('');
+    gridTable.innerHTML = `<table class="bk-grid__table"><caption class="sr-only">Room availability by night</caption><thead><tr><th scope="col"><span class="sr-only">Room</span></th>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  function gridPaint() { if (gridLive && grid.ready && grid.rooms) gridRender(); }
+  gridTable.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-grid-room]');
+    if (!b) return;
+    if (state.step === 2) { // choosing a room: same as its Select button
+      const pick = $(`[data-pick="${b.dataset.gridRoom}"]`);
+      if (pick) pick.click();
+      return;
+    }
+    const room = ROOMS.find((r) => r.slug === b.dataset.gridRoom);
+    if (!room) return;
+    if (!isPicked(room.slug) && state.rooms.length >= MAX_ROOMS) { showAlert(`A booking can have up to ${MAX_ROOMS} rooms — please contact us for more.`); return; }
+    state.rooms = isPicked(room.slug) ? state.rooms.filter((x) => x.slug !== room.slug) : [...state.rooms, room];
+    state.results = null;
+    loadCalendar(); renderSummary(); syncUrl();
+  });
+  const gridMove = (days) => { grid.from = window.RangeCalendar.addDays(grid.from, days); if (grid.from < BOOT.today) grid.from = BOOT.today; gridLoad(); };
+  $('[data-grid-prev]').addEventListener('click', () => gridMove(-gridDays()));
+  $('[data-grid-next]').addEventListener('click', () => gridMove(gridDays()));
+  $('[data-grid-today]').addEventListener('click', () => { grid.from = BOOT.today; gridLoad(); });
+  new ResizeObserver(() => { if (grid.ready && grid.rooms && gridDays() !== grid.n) gridLoad(); }).observe(gridBox);
+  grid.ready = true; gridLive = true;
+  if (state.checkIn && state.checkIn > BOOT.today) grid.from = state.checkIn;
+  gridShow();
 
   // ---------- per person: is there space for the group? ----------
   async function checkGroup() {
@@ -331,13 +414,9 @@
     toRooms.classList.add('is-busy');
     try {
       await fetchRooms();
-      renderRooms();
-      const pre = state.room && state.results.find((r) => r.slug === state.room.slug);
-      if (autoAdvance && pre && pre.available) { go(3); return; }
-      if (pre && !pre.available) {
-        showAlert(`${pre.name} is booked on some of those nights — but these rooms are free.`, true);
-        state.room = null; renderSummary(); syncUrl();
-      }
+      const chosen = state.rooms.length;
+      renderRooms(); // drops chosen rooms that are booked on those nights
+      if (autoAdvance && chosen && state.rooms.length === chosen) { go(3); return; }
       go(2);
     } catch (err) {
       showAlert(err.message);
@@ -346,6 +425,31 @@
       toRooms.classList.remove('is-busy');
     }
   }
+
+  // calendar on the room list: change dates without going back to step 1
+  const datebox = $('[data-datebox]');
+  const cal2El = $('[data-cal2]');
+  let cal2 = null;
+  const monthsFor2 = () => (cal2El.clientWidth >= 650 ? 2 : 1);
+  function setupCal2() {
+    if (!cal2) {
+      cal2 = new window.RangeCalendar(cal2El, {
+        months: monthsFor2(), minDate: BOOT.today, checkIn: state.checkIn, checkOut: state.checkOut,
+        onChange: async ({ checkIn, checkOut }) => {
+          if (!checkIn || !checkOut) return; // wait for both dates
+          state.checkIn = checkIn; state.checkOut = checkOut;
+          state.results = null; state.party = null;
+          cal.setRange(checkIn, checkOut);
+          updateStep1(); renderSummary(); syncUrl();
+          try { await fetchRooms(); renderRooms(); } catch (err) { showAlert(err.message); }
+        },
+      });
+      new ResizeObserver(() => cal2.setMonths(monthsFor2())).observe(cal2El);
+    }
+    cal2.setUnavailable(new Set(cal.unavailable));
+    cal2.setRange(state.checkIn, state.checkOut);
+  }
+  datebox.addEventListener('toggle', () => { if (datebox.open) setupCal2(); });
 
   const partyDays = () => (state.party && !state.party.free ? state.party.taken.map((d) => fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short' })).join(', ') : '');
   function renderPartyWarning() {
@@ -362,10 +466,19 @@
     const free = list.filter((r) => r.available).length;
     $('[data-rooms-sub]').textContent = `${fmtDate(state.checkIn)} – ${fmtDate(state.checkOut)} · ${plural(n, 'night')} · ${free ? `${free} of ${plural(list.length, 'room')} available` : 'nothing free for these dates'}`;
     if (!free) showAlert('Every room is taken for those dates. Try different dates, or book per person — or contact us, we may be able to help.', true);
+    setupCal2();
     renderPartyWarning();
+    // chosen rooms that are booked on these nights can't stay in the booking
+    const gone = state.rooms.filter((x) => { const r = list.find((y) => y.slug === x.slug); return !r || !r.available; });
+    if (gone.length) {
+      state.rooms = state.rooms.filter((x) => !gone.includes(x));
+      showAlert(`${gone.map((x) => x.name).join(', ')} ${gone.length === 1 ? 'is' : 'are'} booked on some of those nights — but other rooms are free.`, true);
+      renderSummary(); syncUrl();
+    }
     $('[data-room-list]').innerHTML = list.map((r) => {
       const status = r.available ? '<span class="pill pill--ok">Available</span>' : `<span class="pill pill--no">${r.free ? 'Fully booked' : 'Booked'}</span>`;
-      return `<article class="bk-room${r.available ? '' : ' is-off'}${state.room && state.room.slug === r.slug ? ' is-selected' : ''}">
+      const on = isPicked(r.slug);
+      return `<article class="bk-room${r.available ? '' : ' is-off'}${on ? ' is-selected' : ''}">
         <div class="bk-room__img">${imgTag(r.images[0], { sizes: '190px', alt: r.name })}</div>
         <div>
           <span class="bk-room__type">${esc(r.type)}</span>
@@ -379,19 +492,39 @@
         <div class="bk-room__side">
           ${status}
           <div class="price"><b>${money(r.total)}</b><small>${money(r.price)} × ${plural(n, 'night')}</small></div>
-          ${r.available ? `<button class="btn btn--sm btn--amber" type="button" data-pick="${esc(r.slug)}">Select</button>` : ''}
+          ${r.available ? `<button class="btn btn--sm ${on ? 'btn--ghost' : 'btn--amber'}" type="button" data-pick="${esc(r.slug)}" aria-pressed="${on}"${on ? ' title="Remove this room"' : ''}>${on ? '✓ Added' : 'Add room'}</button>` : ''}
         </div>
       </article>`;
     }).join('');
+    renderPickBar();
+  }
+  /** The chosen rooms, what they sleep and cost, and the way on. */
+  function renderPickBar() {
+    const bar = $('[data-pickbar]');
+    const k = state.rooms.length;
+    bar.hidden = !k;
+    if (!k) return;
+    const n = countNights(state.checkIn, state.checkOut);
+    const cap = roomsCap();
+    const short = groupSize > cap;
+    $('[data-pick-count]').textContent = k === 1 ? state.rooms[0].name : `${k} rooms · ${state.rooms.map((r) => r.name).join(', ')}`;
+    $('[data-pick-detail]').textContent = `Sleeps ${cap} · ${money(state.rooms.reduce((sum, r) => sum + r.price * n, 0))} for ${plural(n, 'night')}`
+      + (short ? ` · your group is ${groupSize}: add another room` : '');
+    bar.classList.toggle('is-short', short);
   }
   $('[data-room-list]').addEventListener('click', (e) => {
     const b = e.target.closest('[data-pick]');
     if (!b) return;
-    state.room = ROOMS.find((r) => r.slug === b.dataset.pick);
+    const room = ROOMS.find((r) => r.slug === b.dataset.pick);
+    if (!room) return;
+    if (!isPicked(room.slug) && state.rooms.length >= MAX_ROOMS) { showAlert(`A booking can have up to ${MAX_ROOMS} rooms — please contact us for more.`); return; }
+    state.rooms = isPicked(room.slug) ? state.rooms.filter((x) => x.slug !== room.slug) : [...state.rooms, room];
     showAlert('');
-    renderSummary(); syncUrl();
-    go(3);
+    renderRooms(); renderSummary(); syncUrl();
+    const again = $(`[data-pick="${room.slug}"]`);
+    if (again) again.focus({ preventScroll: true }); // keep the keyboard where it was
   });
+  $('[data-pick-continue]').addEventListener('click', () => { showAlert(''); go(3); });
 
   // ---------- step 3: extras + guest details ----------
   const form = $('[data-form]');
@@ -471,7 +604,7 @@
     couponMsg.textContent = 'Checking…';
     const p = new URLSearchParams({ code, kind: isDay() ? 'day_out' : state.kind, checkIn: state.checkIn || '' });
     if (!isDay() && state.checkOut) p.set('checkOut', state.checkOut);
-    if (isPerson()) { p.set('packageId', state.pkg ? state.pkg.id : ''); p.set('adults', state.adults); p.set('children', state.children); } else if (state.room) p.set('room', state.room.slug);
+    if (isPerson()) { p.set('packageId', state.pkg ? state.pkg.id : ''); p.set('adults', state.adults); p.set('children', state.children); } else if (state.rooms.length) p.set('rooms', state.rooms.map((r) => r.slug).join(','));
     try {
       const res = await fetch(`/api/coupon?${p}`);
       const data = await res.json().catch(() => ({}));
@@ -509,7 +642,7 @@
     const body = {
       kind: isDay() ? 'day_out' : state.kind,
       packageId: isPerson() && state.pkg ? state.pkg.id : undefined,
-      room: isPerson() ? undefined : state.room.slug,
+      rooms: isPerson() ? undefined : state.rooms.map((r) => r.slug), // one booking, every room chosen
       checkIn: state.checkIn, checkOut: isDay() ? undefined : state.checkOut,
       adults: isPerson() ? state.adults : undefined, children: isPerson() ? state.children : undefined,
       partyArea: !isDay() && state.partyArea, jblSpeaker: state.jblSpeaker,
@@ -537,7 +670,12 @@
           showAlert(data.error);
           return;
         }
-        if (res.status === 409 && !isPerson()) { showAlert(data.error); state.room = null; renderSummary(); await findRooms({ autoAdvance: false }); return; }
+        if (res.status === 409 && !isPerson()) {
+          // a room went meanwhile (or the hotel is full): show the rooms again, without the taken one
+          await findRooms({ autoAdvance: false });
+          if (alertBox.hidden) showAlert(data.error);
+          return;
+        }
         if (res.status === 409) { showAlert(data.error); go(1); return; }
         throw new Error(data.error || 'Something went wrong — please try again.');
       }

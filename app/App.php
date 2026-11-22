@@ -39,6 +39,11 @@ final class App
         $res->emit(Mailer::hasQueue() || Whatsapp::hasQueue());
         Mailer::flushQueue();
         Whatsapp::flushQueue();
+        // fallback for hosting without cron: send any due booking reminders (at most once an hour)
+        if (PHP_SAPI !== 'cli') {
+            Reminders::runHourly();
+            Mailer::flushQueue();
+        }
     }
 
     // ---------- security headers ----------
@@ -169,6 +174,16 @@ final class App
             return true;
         }
 
+        // All rooms at once for the availability grid: ?from&to → each room with its taken nights.
+        if (self::isGet($req) && self::route('/room-calendar', $p)) {
+            $from = Bookings::isDate($req->q('from')) ? $req->q('from') : Bookings::today();
+            if (strcmp($from, Bookings::today()) < 0) $from = Bookings::today();
+            $to = Bookings::isDate($req->q('to')) && strcmp($req->q('to'), $from) > 0 ? $req->q('to') : Bookings::addDays($from, 14);
+            if (Bookings::nightsBetween($from, $to) > 62) { $res->json(['error' => 'Range too large'], 400); return true; }
+            $res->json(['today' => Bookings::today(), 'rooms' => Bookings::roomGrid($from, $to)]);
+            return true;
+        }
+
         // ?kind=room&checkIn&checkOut → the rooms; ?kind=per_person|day_out&packageId&checkIn(&checkOut)&adults&children → space and price
         if (self::isGet($req) && self::route('/availability', $p)) {
             $kind = in_array($req->q('kind'), ['per_person', 'day_out'], true) ? $req->q('kind') : 'room';
@@ -204,9 +219,17 @@ final class App
             $kind = in_array($req->q('kind'), ['per_person', 'day_out'], true) ? $req->q('kind') : 'room';
             $room = null;
             $pkg = null;
+            $rooms = [];
             if ($kind === 'room') {
-                $room = Bookings::getRoom($req->q('room'));
-                if (!$room || !$room['active']) { $res->json(['error' => 'Choose a room first.'], 400); return true; }
+                // one room (room=slug) or several (rooms=slug,slug)
+                $slugs = is_string($req->q('rooms')) && $req->q('rooms') !== '' ? array_slice(explode(',', $req->q('rooms')), 0, Bookings::MAX_ROOMS) : [$req->q('room')];
+                foreach ($slugs as $sl) {
+                    $r = Bookings::getRoom($sl);
+                    if (!$r || !$r['active']) { $res->json(['error' => 'Choose a room first.'], 400); return true; }
+                    $rooms[$r['id']] = $r;
+                }
+                $rooms = array_values($rooms);
+                $room = $rooms[0];
             } else {
                 $pkg = Bookings::getPackage($req->q('packageId'));
                 if (!$pkg || !$pkg['active']) { $res->json(['error' => 'Choose an option first.'], 400); return true; }
@@ -215,7 +238,7 @@ final class App
             $nights = $kind === 'day_out' ? 0 : Bookings::validateStay($req->q('checkIn'), $req->q('checkOut'));
             $adults = $kind === 'room' ? 0 : max(1, min(Bookings::MAX_GROUP_ADULTS, Js::parseInt($req->q('adults')) ?: 1));
             $children = $kind === 'room' ? 0 : max(0, min(Bookings::MAX_GROUP_CHILDREN, Js::parseInt($req->q('children')) ?: 0));
-            $q = Bookings::quote($kind, $room, $pkg, $nights, $adults, $children, false, false);
+            $q = Bookings::quote($kind, $room, $pkg, $nights, $adults, $children, false, false, [], $rooms);
             $c = Coupons::check($req->q('code'), $q['stay']);
             $res->json(['coupon' => ['code' => $c['code'], 'label' => $c['label'], 'type' => $c['type'], 'value' => $c['value'], 'discount' => $c['discount']]]);
             return true;
@@ -379,6 +402,15 @@ final class App
             } catch (\Throwable $e) {
                 $res->json(['error' => 'WhatsApp failed: ' . $e->getMessage()], 502);
             }
+            return;
+        }
+
+        // ---------- booking reminders: settings, what is due, and sending them now ----------
+        if ($get && self::route('/reminders', $p)) { $res->json(['reminders' => Reminders::admin()]); return; }
+        if ($m === 'PATCH' && self::route('/reminders', $p)) { $res->json(['reminders' => Reminders::save($body)]); return; }
+        if ($m === 'POST' && self::route('/reminders/send', $p)) {
+            $sent = Reminders::sendDueNow();
+            $res->json(['ok' => true, 'sent' => $sent, 'outbox' => !Mailer::enabled(), 'reminders' => Reminders::admin()]);
             return;
         }
 
@@ -580,6 +612,15 @@ final class App
             return;
         }
 
+        // send this booking's reminder now (arrival for a confirmed booking, payment for a pending one)
+        if ($m === 'POST' && self::route('/bookings/:id/reminder', $p, $params)) {
+            $b = Bookings::getBooking(Js::number($params['id']));
+            if (!$b) { $res->json(['error' => 'Booking not found'], 404); return; }
+            $kind = Reminders::sendFor($b);
+            $res->json(['ok' => true, 'kind' => $kind, 'to' => $b['guestEmail'], 'outbox' => !Mailer::enabled()]);
+            return;
+        }
+
         // the rooms a per-person group can be given, and giving them
         if ($get && self::route('/bookings/:id/rooms', $p, $params)) { $res->json(['rooms' => Bookings::roomChoices($params['id'])]); return; }
         if ($m === 'POST' && self::route('/bookings/:id/rooms', $p, $params)) { $res->json(['booking' => Bookings::assignRooms($params['id'], $body['rooms'] ?? null)]); return; }
@@ -616,7 +657,14 @@ final class App
             $checkIn = $req->q('checkIn');
             $checkOut = $dayOut && Bookings::isDate($checkIn) ? Bookings::addDays($checkIn, 1) : $req->q('checkOut');
             if (!Bookings::isDate($checkIn) || !Bookings::isDate($checkOut) || strcmp($checkOut, $checkIn) <= 0) { $res->json(['ok' => false, 'reason' => 'dates']); return; }
-            $room = $kind === 'room' ? Bookings::getRoom($req->q('roomId')) : null;
+            // a room booking's rooms: several (rooms=1,2,3) or one (roomId=1); the first is its main room
+            $roomList = [];
+            if ($kind === 'room') {
+                $wanted = is_string($req->q('rooms')) && $req->q('rooms') !== '' ? array_slice(explode(',', $req->q('rooms')), 0, Bookings::MAX_ROOMS) : [$req->q('roomId')];
+                foreach ($wanted as $w) { $r = Bookings::getRoom($w); if ($r) $roomList[$r['id']] = $r; }
+                $roomList = array_values($roomList);
+            }
+            $room = $roomList[0] ?? null;
             if ($kind === 'room' && !$room) { $res->json(['ok' => false, 'reason' => 'room']); return; }
             $ex = Js::number($req->q('exclude'));
             $exclude = (is_nan($ex) || $ex == 0) ? 0 : (int) $ex;
@@ -627,7 +675,7 @@ final class App
             // rates agreed with the guest (empty = the price list)
             $rate = fn (string $k) => is_string($req->q($k)) && $req->q($k) !== '' && ctype_digit($req->q($k)) ? (int) $req->q($k) : null;
             $rates = $kind === 'room' ? ['room' => $rate('rateRoom')] : ['adult' => $rate('rateAdult'), 'child' => $rate('rateChild')];
-            $quote = Bookings::quote($kind, $room, $pkg, $n, $adults, $children, $party, Js::truthy($req->q('jblSpeaker')), $rates);
+            $quote = Bookings::quote($kind, $room, $pkg, $n, $adults, $children, $party, Js::truthy($req->q('jblSpeaker')), $rates, $roomList);
             // editing a booking that used a coupon: it comes off the new room charge again
             $couponOff = 0;
             $eb = $exclude ? Bookings::getBooking($exclude) : null;
@@ -636,19 +684,22 @@ final class App
                 $couponOff = min($quote['total'], $cp ? Coupons::discountOn($cp['type'], (int) $cp['value'], $quote['stay']) : $eb['couponDiscount']);
             }
             $out = ['ok' => true, 'kind' => $kind, 'nights' => $n, 'lines' => $quote['lines'], 'total' => $quote['total'] - $couponOff, 'stay' => $quote['stay'], 'couponDiscount' => $couponOff,
-                'listRates' => $kind === 'room' ? ['room' => $room['price']] : ['adult' => $pkg['priceAdult'], 'child' => $pkg['priceChild']],
+                // several rooms: the room rate is a night for all of them together
+                'listRates' => $kind === 'room' ? ['room' => array_sum(array_column($roomList, 'price'))] : ['adult' => $pkg['priceAdult'], 'child' => $pkg['priceChild']],
                 'partyArea' => $party ? Bookings::partyAreaStatus($checkIn, $checkOut, $exclude) : null, 'capacity' => null, 'rooms' => [], 'busy' => [],
                 'closed' => Closures::clashes($checkIn, $checkOut, $kind, $exclude)]; // closed days and private parties (a warning: staff can still book)
             if (!$dayOut) {
                 $occ = Bookings::occupancy($checkIn, $checkOut, $exclude);
                 $left = Bookings::capacityLeft($occ);
-                $need = $kind === 'room' ? $room['capacity'] : $adults + $children;
+                $need = $kind === 'room' ? array_sum(array_column($roomList, 'capacity')) : $adults + $children;
                 $out['capacity'] = ['left' => $left, 'needed' => $need, 'over' => $left !== null && $left < $need];
                 $busy = [];
                 foreach ($occ as $night) $busy += $night['rooms'];
                 $out['busy'] = array_map('intval', array_keys($busy)); // rooms taken by other bookings
                 if ($kind === 'room') {
-                    $out['ok'] = !isset($busy[$room['id']]);
+                    $ids = array_column($roomList, 'id');
+                    $out['ok'] = !array_intersect($ids, array_keys($busy));
+                    $out['rooms'] = $ids;
                 } else {
                     $ids = is_string($req->q('rooms')) && $req->q('rooms') !== '' ? array_map('intval', explode(',', $req->q('rooms'))) : null;
                     if ($ids) {
@@ -678,7 +729,7 @@ final class App
         if (preg_match('#^/users(/|$)#', $p)) return ['users'];
         if (preg_match('#^/finance(/|$)#', $p)) return ['finance'];
         if (preg_match('#^/coupons(\.csv)?(/|$)#', $p)) return ['coupons'];
-        if (preg_match('#^/(site|media|whatsapp|calendar-feed|test-email)(/|$)#', $p)) return ['site'];
+        if (preg_match('#^/(site|media|whatsapp|reminders|calendar-feed|test-email)(/|$)#', $p)) return ['site'];
         if (preg_match('#^/(setup|packages|printing)(/|$)#', $p)) return ['setup'];
         if (preg_match('#^/rooms(/|$)#', $p)) return $read ? ['bookings'] : ['setup'];
         if (preg_match('#^/closures(/|$)#', $p)) return $read ? ['bookings', 'pos'] : ['setup'];

@@ -291,10 +291,17 @@
       } else {
         const from = Math.min(...(fits.length ? fits : free).map(r => r.total));
         status = `${plural(free.length, 'room')} free`;
-        note = fits.length
-          ? `From ${money(from)} for ${plural(nights, 'night')}. Choose a room and send your booking: it is confirmed once the advance is paid.`
-          : `No single room sleeps ${plural(ad, 'adult')}, so you can book more than one room, or call us and we’ll arrange it.`;
+        // a group bigger than any one room books several rooms together, on one booking
+        const group = ad + ch;
+        const beds = free.reduce((sum, r) => sum + r.capacity, 0);
+        note = fits.length && group <= Math.max(...fits.map(r => r.capacity))
+          ? `From ${money(from)} for ${plural(nights, 'night')}. Choose a room (or several) and send your booking: it is confirmed once the advance is paid.`
+          : beds >= group
+            ? `No single room sleeps all ${group} of you, so choose two or more rooms on the next page. They’re booked together, on one booking.`
+            : `The free rooms sleep ${beds}, fewer than your ${group}. Book the rooms that are free, or call us and we’ll help.`;
       }
+      // the button says "rooms" when the group needs more than one
+      $('.bresult__book', result).firstChild.textContent = canBook && ad + ch > Math.max(0, ...free.map(r => r.capacity)) ? 'Choose your rooms ' : 'Choose your room ';
       const q = new URLSearchParams({ kind: 'room', checkIn: a, checkOut: l, adults: ad });
       if (ch) q.set('children', ch);
       $('.bresult__book', result).href = `/book?${q}`;

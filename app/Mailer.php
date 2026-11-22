@@ -178,7 +178,8 @@ HTML;
             $rows[] = ['Date', self::niceDate($b['checkIn'])];
         } else {
             if ($b['kind'] === 'room') {
-                $rows[] = ['Room', self::esc($b['roomName']) . ' <span style="color:#6b6a5e">(' . self::esc((string) $b['roomType']) . ', sleeps ' . $b['capacity'] . ')</span>'];
+                $several = count($b['rooms'] ?? []) > 1;
+                $rows[] = [$several ? 'Rooms' : 'Room', self::esc($b['roomName']) . ' <span style="color:#6b6a5e">(' . ($several ? count($b['rooms']) . ' rooms' : self::esc((string) $b['roomType'])) . ', sleeps ' . $b['capacity'] . ')</span>'];
             } else {
                 $rows[] = ['Booking', self::esc($b['packageLabel']) . ' <span style="color:#6b6a5e">(per person)</span>'];
                 if ($forAdmin) $rows[] = ['Rooms', $b['roomName'] ? self::esc($b['roomName']) : '— not assigned —'];
@@ -336,6 +337,51 @@ HTML;
         if ($b['status'] === 'confirmed') { self::sendQuietly(['to' => $b['guestEmail'], 'replyTo' => $replyTo] + self::guestConfirmed($b)); return true; }
         if ($b['status'] === 'cancelled') { self::sendQuietly(['to' => $b['guestEmail'], 'replyTo' => $replyTo] + self::guestCancelled($b)); return true; }
         return false;
+    }
+
+    /** "See you in 2 days" / "tomorrow" / "today" for a reminder sent $days before $date. */
+    private static function inDays(int $days): string
+    {
+        return $days <= 0 ? 'today' : ($days === 1 ? 'tomorrow' : "in $days days");
+    }
+
+    /** Reminder for a confirmed booking: arrival details a few days before check-in. */
+    public static function sendArrivalReminder(array $b, int $daysLeft): bool
+    {
+        if ($b['guestEmail'] === '') return false;
+        $s = Site::info();
+        $loc = Config::location();
+        $first = explode(' ', $b['guestName'])[0];
+        $when = self::inDays($daysLeft);
+        $html = self::layout('See you ' . $when . ', ' . self::esc($first) . ' 🌿',
+            "\n    " . self::p('This is a friendly reminder that your booking at ' . self::esc($s['name']) . ' starts <strong>' . $when . '</strong> (' . self::niceDate($b['checkIn']) . ').')
+            . "\n    " . self::detailsTable($b)
+            . "\n    " . self::p('<strong>Getting here:</strong> ' . self::esc($s['address']) . '. <a href="' . self::esc($loc['directions']) . '" style="color:#3f6b36;font-weight:bold">Directions on Google Maps</a>'
+                . ($loc['plusCode'] !== '' ? ' (plus code ' . self::esc($loc['plusCode']) . ')' : '') . '.')
+            . "\n    " . self::p('If your plans change or you would like to tell us your arrival time, simply reply to this email or call us on ' . self::esc($s['phone']) . '.')
+            . "\n    " . self::p('Warmly,<br><em>The Top Mountain team</em>'));
+        self::sendQuietly(['to' => $b['guestEmail'], 'replyTo' => $s['email'], 'subject' => "Reminder: your stay starts $when · {$b['ref']}", 'html' => $html,
+            'text' => "Reminder: booking {$b['ref']} (" . self::what($b) . ', ' . self::when($b) . ") starts $when. Directions: " . $loc['directions']]);
+        return true;
+    }
+
+    /** Reminder for a pending reservation: the advance is due before the hold runs out. */
+    public static function sendPaymentReminder(array $b, int $daysLeft): bool
+    {
+        if ($b['guestEmail'] === '') return false;
+        $s = Site::info();
+        $first = explode(' ', $b['guestName'])[0];
+        $deadline = $b['holdUntil'] ? self::niceDate($b['holdUntil']) : '';
+        $html = self::layout('Your reservation is waiting, ' . self::esc($first),
+            "\n    " . self::p('We are holding your reservation at ' . self::esc($s['name']) . ($deadline !== '' ? ' until <strong>' . $deadline . '</strong>. After that day it is released so that others can book those dates.' : ' for you, and it is still waiting for the advance payment.'))
+            . "\n    " . self::paymentBlock($b)
+            . "\n    " . self::button(Docs::invoiceUrl($b), 'View or print your invoice →')
+            . "\n    " . self::detailsTable($b)
+            . "\n    " . self::p('If you have already paid, thank you: please ignore this reminder, or call us on ' . self::esc($s['phone']) . ' and we will check.')
+            . "\n    " . self::p('Warmly,<br><em>The Top Mountain team</em>'));
+        self::sendQuietly(['to' => $b['guestEmail'], 'replyTo' => $s['email'], 'subject' => ($deadline !== '' ? "Reminder: your reservation is held until $deadline" : 'Reminder: your reservation is waiting for payment') . " · {$b['ref']}", 'html' => $html,
+            'text' => "Reminder: reservation {$b['ref']} is waiting for its payment" . ($deadline !== '' ? " (held until $deadline)" : '') . ". Please pay the advance and call " . Bookings::paymentInfo()['phone'] . ' to confirm it.']);
+        return true;
     }
 
     /** Email an issued bill to the guest. Returns false when there is no email address. */

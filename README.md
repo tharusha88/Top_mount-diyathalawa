@@ -15,6 +15,12 @@ booking page are served by PHP.
 - **Booking** (`/book`): live availability, room choice, guest details (name, NIC or passport,
   email, phone). No payment is taken online: the booking is **pending** until the advance is paid,
   and the guest is told how to pay and whom to call. Styled like the redesign.
+- **Several rooms, one booking**: a family or group can add up to 10 rooms to one booking (one
+  reference, one advance, one invoice, one bill). Each room is priced per night; an agreed rate
+  set in the admin panel is a night for all its rooms together. Staff add or change a booking's
+  rooms with **Add or change rooms** in the booking, or tick **Add more rooms** on a new booking.
+  The first room is the booking's main room (`bookings.room_id`); a booking with 2+ rooms lists
+  them all in `booking_rooms`, like a per-person group.
 - **Admin panel** (`/admin/`): pending requests (Confirm / Decline), calendar, bookings list with
   CSV export, manual bookings (phone, WhatsApp, walk-in, Booking.com, Agoda…), closed days,
   rooms, booking setup (per-person options, capacity, advance-payment details), coupons, bills,
@@ -23,6 +29,14 @@ booking page are served by PHP.
   issue numbered bills (`INV-00001`). Works on a tablet or a phone.
 - **Email**: the admin is emailed for each website booking; guests get "booking received",
   confirmation and cancellation emails. Without SMTP settings they are saved in `data/outbox/`.
+
+- **Reminders**: guests get an email 2 days before check-in (confirmed bookings), and 1 day before
+  the hold date runs out if a reservation is still unpaid. Each reminder goes out once per booking.
+  Add a daily cron job (cPanel / Hostinger → Cron Jobs): `0 8 * * * php /path/to/scripts/send-reminders.php`
+  (`--dry-run` lists what is due). Without cron the website sends them itself, at most once an hour,
+  when someone visits. In **Admin → Settings → Reminders** you can switch the automatic sending
+  off, change the days (0 turns that kind off), see what is due, and press **Send now**. To remind
+  one guest at any time, open their booking and press **Send reminder**.
 
 Booking references look like `TMR-7K3M9Q`. Double bookings are impossible: every booking is checked
 and saved inside a database transaction.

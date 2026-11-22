@@ -382,11 +382,11 @@
     </div></li>`;
   }
   // ---------- confirm (with the advance) and give a group its rooms ----------
-  /** Checkbox list of rooms for a per-person group: free ones selectable, taken ones shown. */
-  function roomPicker(choices, need) {
+  /** Checkbox list of rooms for a per-person group or a room booking: free ones selectable, taken ones shown. */
+  function roomPicker(choices, need, title = 'Rooms for the group') {
     const list = choices.slice().sort((a, b) => Number(b.assigned) - Number(a.assigned) || (a.priority ?? 999) - (b.priority ?? 999));
     return `<div class="room-pick" data-room-pick>
-      <p class="section-title">Rooms for the group <span class="room-pick__sum" data-pick-sum></span></p>
+      <p class="section-title">${esc(title)} <span class="room-pick__sum" data-pick-sum></span></p>
       <div class="room-pick__list">${list.map((r) => `<label class="room-pick__item${r.free ? '' : ' is-taken'}">
         <input type="checkbox" name="room" value="${r.id}" data-cap="${r.capacity}" ${r.assigned ? 'checked' : ''} ${r.free || r.assigned ? '' : 'disabled'}>
         <span><b>${esc(r.name)}</b><small>sleeps ${r.capacity}${r.free ? '' : ` · taken (${esc(r.takenBy)})`}${r.active ? '' : ' · hidden'}</small></span>
@@ -399,7 +399,8 @@
     const update = () => {
       const beds = $$('[name="room"]:checked', box).reduce((s, x) => s + Number(x.dataset.cap), 0);
       const el = $('[data-pick-sum]', box);
-      el.textContent = `· ${beds} bed${beds === 1 ? '' : 's'} for ${need} guest${need === 1 ? '' : 's'}`;
+      // guests not noted (a room booking): just what the rooms sleep
+      el.textContent = need ? `· ${beds} bed${beds === 1 ? '' : 's'} for ${need} guest${need === 1 ? '' : 's'}` : `· sleep ${beds}`;
       el.classList.toggle('is-short', beds < need);
     };
     box.addEventListener('change', update);
@@ -452,15 +453,21 @@
     };
   }
 
-  /** Change the rooms of a per-person group. */
+  /** Change the rooms of a per-person group, a party, or a room booking (one booking can hold several rooms). */
   async function roomsDialog(b, onDone) {
     let choices;
     try { choices = (await api(`/bookings/${b.id}/rooms`)).rooms; } catch (ex) { toast(ex.message, true); return; }
     const need = b.adults + b.children;
-    openModal(`${modalHead(`Rooms for ${b.guestName}`, `${b.ref} · ${b.packageLabel} · ${whenOf(b)} · ${need} guest${need === 1 ? '' : 's'}`)}
+    const isRoom = b.kind === 'room';
+    const sub = isRoom
+      ? `${b.ref} · ${b.rooms.length} room${b.rooms.length === 1 ? '' : 's'} · ${whenOf(b)}${need ? ` · ${need} guest${need === 1 ? '' : 's'}` : ''}`
+      : `${b.ref} · ${b.packageLabel} · ${whenOf(b)} · ${need} guest${need === 1 ? '' : 's'}`;
+    openModal(`${modalHead(`Rooms for ${b.guestName}`, sub)}
       <form class="dr-body">
-        ${roomPicker(choices, need)}
-        <p class="src">Rooms taken by other bookings on these dates can't be chosen. The group was given rooms from the priority list (Booking setup) when it booked.</p>
+        ${roomPicker(choices, need, isRoom ? 'Rooms in this booking' : 'Rooms for the group')}
+        <p class="src">${isRoom
+          ? 'Tick every room the guest is taking. Rooms taken by other bookings on these dates can\'t be chosen. The price is worked out again from the rooms\' prices, so a total typed by hand is replaced.'
+          : 'Rooms taken by other bookings on these dates can\'t be chosen. The group was given rooms from the priority list (Booking setup) when it booked.'}</p>
         <div class="dlg-foot"><button type="button" class="abtn" data-mclose>Cancel</button><button class="abtn abtn--primary" type="submit">Save rooms</button></div>
       </form>`);
     bindRoomPicker(modalPanel, need);
@@ -471,7 +478,7 @@
       try {
         const r = await api(`/bookings/${b.id}/rooms`, { method: 'POST', body: { rooms } });
         closeModal();
-        toast(`Rooms saved: ${r.booking.roomName}`);
+        toast(`Rooms saved: ${r.booking.roomName}${r.booking.kind === 'room' ? ` · ${money(r.booking.totalAmount)}` : ''}`);
         if (onDone) onDone(r.booking);
       } catch (ex) { toast(ex.message, true); }
     };
@@ -572,7 +579,8 @@
         <span>${esc(b.source === 'block' ? 'Blocked' : b.guestName)}</span><small>${esc(small)}</small></button>`;
     };
     // a per-person group shows on every room it was given
-    const onRoom = (b, r) => b.roomId === r.id || ((isGroup(b) || isParty(b)) && b.rooms.some((x) => x.id === r.id));
+    // on every room it holds: a room booking can hold several, like a group or a party
+    const onRoom = (b, r) => b.roomId === r.id || (b.rooms || []).some((x) => x.id === r.id);
     const rows = d.rooms.map((r) => {
       const bars = d.bookings.filter((b) => onRoom(b, r)).map((b) => stayBar(b)).join('');
       return `<div class="g-row"><div class="g-name${r.active ? '' : ' is-off'}"><b>${esc(r.name)}</b><small>${esc(r.type)} · sleeps ${r.capacity}${r.active ? '' : ' · hidden'}</small></div><div class="g-track">${cells((s) => `data-new-room="${r.id}" data-new-date="${s}" aria-label="New booking: ${esc(r.name)}, ${fd(s)}"`)}${bars}</div></div>`;
@@ -818,7 +826,7 @@
     const billOpen = !!(folio && folio.open);
     const pays = folio ? folio.payments.filter((p) => !p.voided) : []; // advances (payments on a bill are on the bill)
     const partyB = isParty(b);
-    const canRooms = (group || partyB) && ['pending', 'confirmed', 'checked_in'].includes(b.status);
+    const canRooms = (group || partyB || (b.kind === 'room' && !isBlock)) && ['pending', 'confirmed', 'checked_in'].includes(b.status) && !b.billId;
     const kindTitle = b.kind === 'room' ? ME.labels.room : dayOut ? 'Day visit' : partyB ? 'Outdoor party' : ME.labels.person;
     const dates = dayOut || partyB ? `<div><small>Date</small>${fd(b.checkIn, long)}</div>`
       : `<div><small>Check-in</small>${fd(b.checkIn, long)}</div><div><small>Check-out</small>${fd(b.checkOut, long)} · ${b.nights}n</div>`;
@@ -835,7 +843,7 @@
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">${st(b.status)}<b style="font-family:var(--display);font-size:1.3rem">${money(b.totalAmount)}</b></div>
           <div class="kv">
             ${isBlock ? `<div><small>Room</small>${esc(b.roomName)}</div><div><small>Dates</small>${fd(b.checkIn)} → ${fd(b.checkOut, long)} · ${b.nights}n</div>` : `
-            <div><small>${esc(kindTitle)}</small>${esc(b.kind === 'room' ? b.roomName : b.packageLabel)}</div>
+            <div${b.kind === 'room' && b.rooms.length > 1 ? ' class="kv-wide"' : ''}><small>${esc(b.kind === 'room' && b.rooms.length > 1 ? `${b.rooms.length} rooms` : kindTitle)}</small>${esc(b.kind === 'room' ? b.roomName : b.packageLabel)}${b.kind === 'room' && canRooms ? ' <button type="button" class="linkbtn" data-rooms>Add or change rooms</button>' : ''}</div>
             <div><small>${b.kind === 'room' ? 'Sleeps' : 'Guests'}</small>${b.kind === 'room' ? `${b.capacity} guest${b.capacity === 1 ? '' : 's'}` : guestsLong}</div>
             ${group ? `<div class="kv-wide"><small>Rooms</small>${b.rooms.length ? `${esc(b.roomName)} <span class="src">· sleep ${b.capacity}</span>` : '<b class="is-due">None yet</b>'}${canRooms ? ' <button type="button" class="linkbtn" data-rooms>Change rooms</button>' : ''}</div>` : ''}
             ${partyB ? `<div><small>Time</small>${esc(b.arrivalTime || '—')}</div>
@@ -861,6 +869,7 @@
           </div>` : ''}
           ${!isBlock && folio && folio.invoiceUrl ? `<div class="dr-actions">
             <button type="button" class="abtn${b.status === 'pending' ? ' abtn--amber' : ''}" data-invoice>${icon('a-doc', 16)}${b.status === 'pending' ? 'Send the invoice' : 'Invoice'}</button>
+            ${['confirmed', 'pending'].includes(b.status) && b.guestEmail ? `<button type="button" class="abtn" data-remind title="Email this guest ${b.status === 'pending' ? 'a payment' : 'an arrival'} reminder now">${icon('a-mail', 16)}Send reminder</button>` : ''}
           </div>` : ''}
           ${pays.length ? `<div class="pay-list"><p class="section-title">Payments</p>${pays.map((p) => `<div class="pay-row">
             <div><b>${money(p.amount)}</b> · ${esc(p.methodLabel)} <span class="src">· ${fdt(p.createdAt)}</span>
@@ -882,7 +891,7 @@
           <div class="card__head"><h2>Edit booking</h2><span class="src" data-avail></span></div>
           <div class="card__body grid2">
             ${isBlock ? '' : `<label class="fld span2"><span>Booking</span><select name="what">${kindOptions(kindValue(b))}</select></label>`}
-            <label class="fld span2" data-room-f><span>Room</span><select name="roomId">${ROOMS.map((r) => `<option value="${r.id}" ${r.id === b.roomId ? 'selected' : ''}>${esc(r.name)} — ${esc(r.type)} · sleeps ${r.capacity}</option>`).join('')}</select></label>
+            <label class="fld span2" data-room-f><span>${b.kind === 'room' && b.rooms.length > 1 ? `Main room <small>· also ${esc(b.rooms.filter((x) => x.id !== b.roomId).map((x) => x.name).join(', '))} (Add or change rooms, above)</small>` : 'Room'}</span><select name="roomId">${ROOMS.map((r) => `<option value="${r.id}" ${r.id === b.roomId ? 'selected' : ''}>${esc(r.name)} — ${esc(r.type)} · sleeps ${r.capacity}</option>`).join('')}</select></label>
             <label class="fld"><span data-in-label>Check-in</span><input type="date" name="checkIn" value="${b.checkIn}" required></label>
             <label class="fld" data-stay-f><span>Check-out</span><input type="date" name="checkOut" value="${b.checkOut}"></label>
             ${isBlock ? '' : `<label class="fld"><span>Adults</span><input type="number" name="adults" min="0" max="50" value="${b.adults}"></label>
@@ -913,6 +922,16 @@
       if (e.target.closest('a[href^="#/"]')) { closeDrawer(true); return; } // going to a bill
       if (e.target.closest('[data-rooms]')) { roomsDialog(b, () => reloadDrawer(b.id)); return; }
       if (e.target.closest('[data-invoice]')) { showInvoice(b, folio.invoiceUrl); return; }
+      const rem = e.target.closest('[data-remind]');
+      if (rem) {
+        if (!confirm(`Email ${b.guestName} a ${b.status === 'pending' ? 'payment' : 'arrival'} reminder now?`)) return;
+        rem.disabled = true;
+        api(`/bookings/${b.id}/reminder`, { method: 'POST', body: {} })
+          .then((r) => toast(r.outbox ? 'Saved to data/outbox (email isn\'t set up yet)' : `Reminder sent to ${r.to}`))
+          .catch((ex) => toast(ex.message, true))
+          .finally(() => { rem.disabled = false; });
+        return;
+      }
       const rc = e.target.closest('[data-receipt]');
       if (rc) { const p = pays.find((x) => x.id === Number(rc.dataset.receipt)); if (p) showReceipt(p, b); return; }
       if (e.target.closest('[data-pay]')) {
@@ -982,6 +1001,9 @@
       // a group (or a party) keeps its rooms when only its dates or guests change
       const sameRooms = (group || partyB) && form.what.value === original.what && b.rooms.length > 0;
       if (sameRooms) p.set('rooms', b.rooms.map((x) => x.id).join(','));
+      // a room booking with several rooms: the chosen main room plus its other rooms
+      const otherRooms = b.kind === 'room' && k === 'room' && b.rooms.length > 1 ? b.rooms.map((x) => x.id).filter((id) => id !== b.roomId) : [];
+      if (otherRooms.length) p.set('rooms', [form.roomId.value, ...otherRooms].join(','));
       const n = ++seq;
       const r = await api(`/check?${p}`).catch(() => null);
       if (!r || n !== seq) return;
@@ -989,7 +1011,7 @@
       let text;
       if (r.reason === 'dates') text = 'Check the dates';
       else if (r.reason) text = 'Choose what is booked';
-      else if (!r.ok) text = k === 'room' ? '✕ That room is booked on those dates' : sameRooms ? '✕ Its rooms are taken on those dates' : '✕ Not enough free rooms for the group';
+      else if (!r.ok) text = k === 'room' ? (otherRooms.length ? '✕ One of its rooms is booked on those dates' : '✕ That room is booked on those dates') : sameRooms ? '✕ Its rooms are taken on those dates' : '✕ Not enough free rooms for the group';
       else if (party) text = '✕ Party area already booked';
       else text = k === 'day_out' ? '✓ Day out' : k === 'event' ? `✓ Party area free${r.alreadyBooked && r.alreadyBooked.length ? ` · ⚠ ${r.alreadyBooked.length} booked that night` : ''}`
         : `✓ Available · ${r.nights} night${r.nights === 1 ? '' : 's'}${k === 'per_person' && !sameRooms ? ` · rooms ${roomNames(r.rooms)}` : ''}`;
@@ -1121,8 +1143,10 @@
       $$('[data-stay-f]', form).forEach((el) => { el.hidden = dayOut; });
       $$('[data-party-f]', form).forEach((el) => { el.hidden = isBlock || dayOut; });
       $$('[data-event-f]', form).forEach((el) => { el.hidden = !isPartyKind || isBlock; });
-      $('[data-group-f]', form).hidden = !(group || isPartyKind) || isBlock;
+      const roomKind = kind === 'room';
+      $('[data-group-f]', form).hidden = !(group || isPartyKind || roomKind) || (isBlock && !roomKind);
       $('[data-pick-label]', form).innerHTML = isPartyKind ? 'Hold rooms for party guests who stay the night <span class="src">— optional; the price is in the party\'s total</span>'
+        : roomKind ? `Add more rooms to this ${isBlock ? 'block' : 'booking'} <span class="src">— ${isBlock ? 'close several rooms at once' : 'for a family or group taking several rooms; one booking, one bill'}</span>`
         : 'Choose the group\'s rooms myself <span class="src">— otherwise they\'re taken from the room priority list (Booking setup)</span>';
       form.adults.max = isPartyKind ? 1000 : 50;
       form.children.max = isPartyKind ? 1000 : 30;
@@ -1145,16 +1169,21 @@
         checkBox.className = 'note note--bad'; checkBox.textContent = isPartyKind ? 'Choose the party date.' : dayOut ? 'Choose the date of the day out.' : 'Check-out must be after check-in.'; return;
       }
       const p = checkQuery(form);
-      const picked = (group || isPartyKind) && form.pickRooms.checked ? pickedRooms(pickList) : [];
-      if (picked.length) p.set('rooms', picked.join(','));
+      const mainId = Number(form.roomId.value);
+      const picked = (group || isPartyKind || roomKind) && form.pickRooms.checked ? pickedRooms(pickList).filter((id) => !roomKind || id !== mainId) : [];
+      // a room booking: its main room, then the rooms added
+      const roomList = roomKind ? [mainId, ...picked] : [];
+      if (roomKind ? roomList.length > 1 : picked.length) p.set('rooms', (roomKind ? roomList : picked).join(','));
       const n = ++seq;
       const r = await api(`/check?${p}`).catch(() => null);
       if (!r || n !== seq) return;
       // show which rooms other bookings already have on these dates
       $$('[name="room"]', pickList).forEach((x) => {
         const taken = (r.busy || []).includes(Number(x.value));
-        x.closest('.room-pick__item').classList.toggle('is-taken', taken);
-        x.disabled = taken && !x.checked;
+        const isMain = roomKind && Number(x.value) === mainId; // already the booking's room
+        if (isMain) x.checked = false;
+        x.closest('.room-pick__item').classList.toggle('is-taken', taken || isMain);
+        x.disabled = (taken && !x.checked) || isMain;
       });
       const rm = ROOMS.find((x) => String(x.id) === form.roomId.value) || {};
       const people = Number(form.adults.value || 0) + Number(form.children.value || 0);
@@ -1165,7 +1194,12 @@
       if (isPartyKind) {
         msg = partyCheckText(r, form, picked);
       } else if (dayOut) msg = `✓ Day out on ${fd(form.checkIn.value, { weekday: 'long', day: 'numeric', month: 'long' })} — any number of groups can come on the same day.`;
-      else if (kind === 'room') {
+      else if (kind === 'room' && roomList.length > 1) {
+        const cap = roomList.reduce((s, id) => s + ((ROOMS.find((x) => x.id === id) || {}).capacity || 0), 0);
+        msg = r.ok ? `✓ ${roomNames(roomList)} (${roomList.length} rooms, sleep ${cap}) are free for ${nights} (${fd(form.checkIn.value)} → ${fd(form.checkOut.value)}).`
+          : '✕ One of those rooms is already booked for some of those nights. Pick other dates or other rooms (see the Calendar).';
+        if (!isBlock && people > cap) { msg += ` ✕ These rooms sleep ${cap}, not ${people}.`; good = false; }
+      } else if (kind === 'room') {
         msg = r.ok ? `✓ ${rm.name} (sleeps ${rm.capacity}) is free for ${nights} (${fd(form.checkIn.value)} → ${fd(form.checkOut.value)}).`
           : `✕ ${rm.name} is already booked for some of those nights. Pick other dates or another room (see the Calendar).`;
         if (!isBlock && people > rm.capacity) { msg += ` ✕ ${rm.name} sleeps ${rm.capacity}, not ${people}.`; good = false; }
@@ -1198,15 +1232,18 @@
       const dayOut = kind === 'day_out' || kind === 'event'; // one date
       if (!isBlock && !form.guestName.value.trim()) { toast('Please enter the guest name.', true); form.guestName.focus(); return; }
       if (kind === 'event' && form.totalAmount.value === '') { toast('Enter the price agreed for the party.', true); form.totalAmount.focus(); return; }
-      const picking = (kind === 'per_person' || kind === 'event') && form.pickRooms.checked;
-      const picked = picking ? pickedRooms(pickList) : [];
+      const mainId = Number(form.roomId.value);
+      const picking = (kind === 'per_person' || kind === 'event' || kind === 'room') && form.pickRooms.checked;
+      const picked = picking ? pickedRooms(pickList).filter((id) => kind !== 'room' || id !== mainId) : [];
+      if (picking && kind === 'room' && !picked.length) { toast('Tick the rooms to add, or untick “Add more rooms”.', true); return; }
       if (picking && !picked.length) { toast(kind === 'event' ? 'Tick the rooms to hold, or untick “Hold rooms for party guests”.' : 'Tick the rooms for the group, or untick “Choose the group\'s rooms myself”.', true); return; }
       const body = {
-        kind, packageId: packageId || undefined, roomId: kind === 'room' ? Number(form.roomId.value) : undefined,
+        kind, packageId: packageId || undefined, roomId: kind === 'room' ? mainId : undefined,
         checkIn: form.checkIn.value, checkOut: dayOut ? undefined : form.checkOut.value,
         adults: isBlock ? 0 : Number(form.adults.value || 0), children: isBlock ? 0 : Number(form.children.value || 0),
         partyArea: !isBlock && !dayOut && form.partyArea.checked, jblSpeaker: !isBlock && form.jblSpeaker.checked,
-        rooms: picked.length ? picked : undefined,
+        // a room booking's rooms (its main room first), or a group's / party's rooms
+        rooms: kind === 'room' ? (picked.length ? [mainId, ...picked] : undefined) : (picked.length ? picked : undefined),
         source: form.source.value, status: form.status.value,
         guestName: form.guestName.value, guestPhone: form.guestPhone.value, guestEmail: form.guestEmail.value, country: form.country.value,
         guestIdNo: isBlock ? '' : form.guestIdNo.value,
@@ -1415,6 +1452,39 @@
     </div>
   </section>`;
 
+  /** Reminders: emails to guests before arrival and before an unpaid reservation is released. */
+  const remindersCard = (r) => {
+    const kindLabel = (k) => (k === 'arrival' ? 'Arrival' : 'Payment');
+    const when = (d) => (d.kind === 'arrival' ? `check-in ${fd(d.checkIn)}` : `held until ${fd(d.holdUntil)}`);
+    const left = (n) => (n <= 0 ? 'today' : n === 1 ? 'tomorrow' : `in ${n} days`);
+    return `<section class="card" data-rem-card>
+    <div class="card__head"><h2>Reminders</h2>${r.on ? '<span class="st st--confirmed">On</span>' : '<span class="st st--checked_out">Paused</span>'}</div>
+    <div class="card__body" style="display:grid;gap:14px">
+      <p style="margin:0">Guests are emailed a reminder before they arrive, and before an unpaid reservation is released. Each is sent once per booking, automatically (daily, or when the website is visited). You can also send them yourself at any time.</p>
+      ${r.emailEnabled ? '' : '<div class="note note--info">Email sending isn\'t set up yet, so reminders are saved to <code>data/outbox/</code> instead of being sent.</div>'}
+      <form class="grid2" data-rem-form style="align-items:end">
+        <label class="fld"><span>Arrival reminder <small>days before check-in · 0 = off</small></span><input type="number" name="arrivalDays" min="0" max="30" value="${r.arrivalDays}" required></label>
+        <label class="fld"><span>Payment reminder <small>days before the hold date · 0 = off</small></span><input type="number" name="paymentDays" min="0" max="30" value="${r.paymentDays}" required></label>
+        <div class="full" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <label class="switch"><input type="checkbox" name="on" ${r.on ? 'checked' : ''}> Send reminders automatically</label>
+          <span style="flex:1"></span>
+          <button class="abtn abtn--primary" type="submit">Save</button>
+        </div>
+      </form>
+      <div>
+        <p class="section-title">Due now${r.due.length ? ` (${r.due.length})` : ''}</p>
+        ${r.due.length ? `<div class="pay-list">${r.due.map((d) => `<div class="pay-row">
+            <div><b>${esc(d.guestName)}</b> · <a href="#/bookings/${d.id}">${esc(d.ref)}</a> <span class="src">· ${kindLabel(d.kind)} reminder · ${when(d)} (${left(d.daysLeft)})</span></div>
+          </div>`).join('')}</div>
+          <div style="margin-top:10px"><button class="abtn abtn--primary" type="button" data-rem-send>${icon('a-mail', 16)}Send ${r.due.length === 1 ? 'this reminder' : `these ${r.due.length} reminders`} now</button></div>`
+          : '<p class="src" style="margin:0">Nothing is due. To remind one guest at any time, open their booking and press <b>Send reminder</b>.</p>'}
+      </div>
+      ${r.recent.length ? `<div><p class="section-title">Recently sent</p><div class="pay-list">${r.recent.map((x) => `<div class="pay-row">
+          <div>${esc(x.guestName)} · <a href="#/bookings/${x.id}">${esc(x.ref)}</a> <span class="src">· ${kindLabel(x.kind)} · ${fdt(x.sentAt)}</span></div></div>`).join('')}</div></div>` : ''}
+    </div>
+  </section>`;
+  };
+
   /** Google Calendar: a private link (.ics) that calendar apps subscribe to. */
   const calCard = (c) => `<section class="card" data-cal-card>
     <div class="card__head"><h2>Google Calendar</h2><span class="src">${c.events} booking${c.events === 1 ? '' : 's'} in the calendar</span></div>
@@ -1445,7 +1515,7 @@
     const site = can('site');
     const printing = can('setup');
     setHead('Settings', site ? 'Email, WhatsApp alerts, Google Calendar, printing and your account.' : 'Your account.');
-    const [{ whatsapp }, { feed }] = site ? await Promise.all([api('/whatsapp'), api('/calendar-feed')]) : [{}, {}];
+    const [{ whatsapp }, { feed }, { reminders }] = site ? await Promise.all([api('/whatsapp'), api('/calendar-feed'), api('/reminders')]) : [{}, {}, {}];
     view.innerHTML = `<div class="settings">
       ${site ? `<section class="card">
         <div class="card__head"><h2>Booking notifications</h2>${ME.emailEnabled ? '<span class="st st--confirmed">Email on</span>' : '<span class="st st--pending">Not set up</span>'}</div>
@@ -1466,6 +1536,7 @@
         </div>
       </section>
       ${waCard(whatsapp)}
+      ${remindersCard(reminders)}
       ${calCard(feed)}` : ''}
       ${printing ? `<section class="card" data-print-card>
         <div class="card__head"><h2>Printing</h2><span class="src">Bills, invoices and receipts</span></div>
@@ -1553,6 +1624,27 @@
       };
     };
     bindWa();
+    const bindRem = () => {
+      const card = $('[data-rem-card]');
+      const refresh = (r) => { card.outerHTML = remindersCard(r); bindRem(); };
+      const f = $('[data-rem-form]', card);
+      f.onsubmit = async (e) => {
+        e.preventDefault();
+        const body = { on: f.on.checked, arrivalDays: Number(f.arrivalDays.value), paymentDays: Number(f.paymentDays.value) };
+        try { refresh((await api('/reminders', { method: 'PATCH', body })).reminders); toast('Reminder settings saved'); } catch (ex) { toast(ex.message, true); }
+      };
+      const send = $('[data-rem-send]', card);
+      if (send) send.onclick = async () => {
+        send.disabled = true;
+        try {
+          const r = await api('/reminders/send', { method: 'POST', body: {} });
+          const n = r.sent.arrival + r.sent.payment;
+          refresh(r.reminders);
+          toast(r.outbox ? `${n} reminder${n === 1 ? '' : 's'} saved to data/outbox (email isn't set up yet)` : `${n} reminder${n === 1 ? '' : 's'} sent`);
+        } catch (ex) { toast(ex.message, true); send.disabled = false; }
+      };
+    };
+    bindRem();
     const bindCal = () => {
       const card = $('[data-cal-card]');
       const input = $('[data-cal-url]', card);

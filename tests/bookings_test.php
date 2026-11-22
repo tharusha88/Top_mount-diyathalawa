@@ -920,5 +920,132 @@ test('outdoor parties: booked by staff, hold the party area and any rooms, and d
     eq(Ydr\Closures::clashes($D, $d(346)), []);
 });
 
+// ---------- one booking, several rooms ----------
+test('one booking can hold several rooms: all are taken, each priced per night', function () use ($guest, $d, $room, $slugs) {
+    [$kitul, $weera] = [$room('kitul-canopy-cabin'), $room('weera-canopy-cabin')];
+    $guestsBefore = B::occupancy($d(490), $d(491))[$d(490)]['guests'];
+    $b = B::createBooking($guest + ['kind' => 'room', 'rooms' => ['kitul-canopy-cabin', 'weera-canopy-cabin'], 'checkIn' => $d(490), 'checkOut' => $d(492)]);
+    eq([$b['status'], $b['kind'], $b['roomId'], $slugs($b)], ['pending', 'room', $kitul['id'], ['kitul-canopy-cabin', 'weera-canopy-cabin']]);
+    eq($b['totalAmount'], ($kitul['price'] + $weera['price']) * 2);
+    eq([$b['capacity'], $b['roomName'], $b['place']], [4, 'Kitul Canopy Cabin, Weera Canopy Cabin', 'Kitul Canopy Cabin, Weera Canopy Cabin']);
+    eq($b['listRates']['room'], $kitul['price'] + $weera['price'], 'the list rate is a night for all the rooms');
+    // both rooms are gone for those nights, and the hotel counts both rooms' beds
+    $free = array_column(array_filter(B::searchRooms($d(490), $d(492)), fn ($r) => $r['available']), 'slug');
+    eq([in_array('kitul-canopy-cabin', $free, true), in_array('weera-canopy-cabin', $free, true)], [false, false]);
+    eq(B::occupancy($d(490), $d(491))[$d(490)]['guests'] - $guestsBefore, 4);
+    throws(fn () => B::createBooking($guest + ['room' => 'weera-canopy-cabin', 'checkIn' => $d(491), 'checkOut' => $d(493)]), 'code:unavailable');
+    throws(fn () => B::createBooking($guest + ['rooms' => ['domba-pool-villa', 'kitul-canopy-cabin'], 'checkIn' => $d(491), 'checkOut' => $d(493)]), 'code:unavailable');
+    // the invoice lists each room
+    eq(array_column(B::priceLines($b), 'label'), ['Kitul Canopy Cabin', 'Weera Canopy Cabin']);
+    $html = Ydr\Docs::invoiceHtml(B::getBooking($b['id']));
+    foreach (['Kitul Canopy Cabin', 'Weera Canopy Cabin'] as $want) if (!str_contains($html, $want)) throw new Exception("invoice lacks $want");
+    // finance (confirmed stays) gives every room its nights and a share of the price
+    $before = array_column(Ydr\Finance::analytics(Ydr\Finance::period($d(490), $d(491)))['rooms'], null, 'id');
+    B::updateBooking($b['id'], ['status' => 'confirmed']);
+    $after = array_column(Ydr\Finance::analytics(Ydr\Finance::period($d(490), $d(491)))['rooms'], null, 'id');
+    $gain = fn (int $id, string $k) => ($after[$id][$k] ?? 0) - ($before[$id][$k] ?? 0);
+    eq([$gain($kitul['id'], 'nights'), $gain($weera['id'], 'nights')], [2, 2]);
+    eq($gain($kitul['id'], 'revenue') + $gain($weera['id'], 'revenue'), $b['totalAmount']);
+    B::updateBooking($b['id'], ['status' => 'cancelled']);
+    eq(count(array_filter(B::searchRooms($d(490), $d(492)), fn ($r) => in_array($r['slug'], ['kitul-canopy-cabin', 'weera-canopy-cabin'], true) && $r['available'])), 2, 'cancelling frees every room');
+});
+
+test('a booking\'s rooms can be changed: it is re-priced, and can go back to one room', function () use ($guest, $d, $room, $slugs) {
+    [$kitul, $weera, $domba, $yodha] = [$room('kitul-canopy-cabin'), $room('weera-canopy-cabin'), $room('domba-pool-villa'), $room('yodha-family-lodge')];
+    $b = B::createBooking($guest + ['rooms' => ['kitul-canopy-cabin', 'weera-canopy-cabin'], 'checkIn' => $d(494), 'checkOut' => $d(496)]);
+    // add a room (the admin room chooser)
+    $b = B::assignRooms($b['id'], [$kitul['id'], $weera['id'], $domba['id']]);
+    eq([$slugs($b), $b['totalAmount']], [['domba-pool-villa', 'kitul-canopy-cabin', 'weera-canopy-cabin'], ($kitul['price'] + $weera['price'] + $domba['price']) * 2]);
+    // a new main room takes the old main room's place; the others stay
+    $b = B::updateBooking($b['id'], ['roomId' => $yodha['id']]);
+    eq([$b['roomId'], count($b['rooms']), in_array($kitul['id'], array_column($b['rooms'], 'id'), true)], [$yodha['id'], 3, false]);
+    eq($b['totalAmount'], ($yodha['price'] + $weera['price'] + $domba['price']) * 2);
+    // saving the main room unchanged keeps every room
+    $b = B::updateBooking($b['id'], ['roomId' => $yodha['id'], 'guestName' => 'Renamed Guest']);
+    eq(count($b['rooms']), 3);
+    // an agreed rate is a night for all the rooms together
+    $b = B::updateBooking($b['id'], ['rateRoom' => 100000]);
+    eq([$b['rates']['room'], $b['totalAmount'], count(B::priceLines($b))], [100000, 200000, 1]);
+    // back to one room: the others are free again
+    $b = B::updateBooking($b['id'], ['rooms' => [$domba['id']]]);
+    eq([$b['roomId'], $slugs($b), $b['totalAmount']], [$domba['id'], ['domba-pool-villa'], $domba['price'] * 2]);
+    $free = array_column(array_filter(B::searchRooms($d(494), $d(496)), fn ($r) => $r['available']), 'slug');
+    eq([in_array('weera-canopy-cabin', $free, true), in_array('yodha-family-lodge', $free, true)], [true, true]);
+    B::updateBooking($b['id'], ['status' => 'cancelled']);
+});
+
+test('several rooms: each must be bookable, guests fit all of them, and the hotel has space', function () use ($guest, $d) {
+    throws(fn () => B::createBooking($guest + ['rooms' => ['kitul-canopy-cabin', 'no-such-room'], 'checkIn' => $d(497), 'checkOut' => $d(498)]), '/no longer available/');
+    throws(fn () => B::createBooking($guest + ['rooms' => array_fill(0, B::MAX_ROOMS + 1, 'kitul-canopy-cabin'), 'checkIn' => $d(497), 'checkOut' => $d(498)]), '/up to ' . B::MAX_ROOMS . ' rooms/');
+    throws(fn () => B::createBooking($guest + ['rooms' => ['kitul-canopy-cabin', 'weera-canopy-cabin'], 'adults' => 5, 'checkIn' => $d(497), 'checkOut' => $d(498)]), '/These rooms sleep up to 4 guests/');
+    $cap = B::hotelCapacity();
+    B::saveSetup(['capacity' => 3]);
+    try {
+        throws(fn () => B::createBooking($guest + ['rooms' => ['kitul-canopy-cabin', 'weera-canopy-cabin'], 'checkIn' => $d(497), 'checkOut' => $d(498)]), 'code:full');
+    } finally {
+        B::saveSetup(['capacity' => $cap]);
+    }
+    // a listed room twice counts once
+    $b = B::createBooking($guest + ['rooms' => ['kitul-canopy-cabin', 'kitul-canopy-cabin'], 'checkIn' => $d(497), 'checkOut' => $d(498)]);
+    eq(count($b['rooms']), 1);
+    B::updateBooking($b['id'], ['status' => 'cancelled']);
+});
+
+// ---------- reminders ----------
+test('arrival reminders go to confirmed bookings inside the window, once', function () use ($guest, $d, $room) {
+    $outbox = Ydr\Config::get()['dataDir'] . '/outbox';
+    $count = fn () => count(glob("$outbox/*.html") ?: []);
+    $free = fn (int $in) => current(array_filter(B::searchRooms($d($in), $d($in + 1)), fn ($r) => $r['available']))['slug'];
+    $mk = fn (string $slug, int $in, string $status) => B::createBooking($guest + ['roomId' => $room($free($in))['id'], 'checkIn' => $d($in), 'checkOut' => $d($in + 1), 'source' => 'phone', 'status' => $status], true);
+    $soon = $mk('kitul-canopy-cabin', 2, 'confirmed');
+    $far = $mk('weera-canopy-cabin', 9, 'confirmed');
+    $pending = $mk('hora-pool-villa', 2, 'pending');
+    $ids = array_column(Ydr\Reminders::due(), 'id');
+    eq(in_array($soon['id'], $ids, true), true, 'inside window');
+    eq(in_array($far['id'], $ids, true), false, 'too far away');
+    eq(in_array($pending['id'], $ids, true), false, 'pending is not an arrival reminder');
+    $before = $count();
+    $sent = Ydr\Reminders::run();
+    Ydr\Mailer::flushQueue();
+    eq($sent['arrival'] >= 1, true, 'sent');
+    eq($count() > $before, true, 'email written');
+    eq(in_array($soon['id'], array_column(Ydr\Reminders::due(), 'id'), true), false, 'not again');
+    eq(Ydr\Reminders::run(), ['arrival' => 0, 'payment' => 0], 'second run sends nothing');
+});
+
+test('payment reminders go to unpaid reservations whose hold ends soon; reminders can be switched off', function () use ($guest, $d, $room) {
+    $b = B::createBooking($guest + ['roomId' => $room(current(array_filter(B::searchRooms($d(300), $d(301)), fn ($r) => $r['available']))['slug'])['id'], 'checkIn' => $d(300), 'checkOut' => $d(301), 'source' => 'phone', 'status' => 'pending', 'holdUntil' => $d(1)], true);
+    $row = current(array_filter(Ydr\Reminders::due(), fn ($x) => $x['id'] === $b['id']));
+    eq([$row['kind'], $row['daysLeft']], ['payment', 1]);
+    Settings::set(['reminders_on' => '0']);
+    try { eq(Ydr\Reminders::run(), ['arrival' => 0, 'payment' => 0], 'off'); } finally { Settings::set(['reminders_on' => '1']); }
+    $sent = Ydr\Reminders::run();
+    Ydr\Mailer::flushQueue();
+    eq($sent['payment'] >= 1, true, 'sent');
+    eq(in_array($b['id'], array_column(Ydr\Reminders::due(), 'id'), true), false, 'not again');
+});
+
+test('admin can change reminder settings, and send a reminder for one booking whenever they like', function () use ($guest, $d, $room) {
+    eq(Ydr\Reminders::save(['arrivalDays' => 3, 'paymentDays' => 0, 'on' => false]) ['arrivalDays'], 3);
+    eq([Ydr\Reminders::admin()['paymentDays'], Ydr\Reminders::admin()['on']], [0, false]);
+    throws(fn () => Ydr\Reminders::save(['arrivalDays' => 99]), '/0 to 30/');
+    throws(fn () => Ydr\Reminders::save(['paymentDays' => 'x']), '/0 to 30/');
+    Ydr\Reminders::save(['arrivalDays' => 2, 'paymentDays' => 1, 'on' => true]);
+    $free = fn (int $in) => current(array_filter(B::searchRooms($d($in), $d($in + 1)), fn ($r) => $r['available']))['slug'];
+    $mk = fn (int $in, string $status, array $more = []) => B::createBooking($guest + ['roomId' => $room($free($in))['id'], 'checkIn' => $d($in), 'checkOut' => $d($in + 1), 'source' => 'phone', 'status' => $status] + $more, true);
+    $far = $mk(25, 'confirmed'); // far outside the automatic window
+    eq(Ydr\Reminders::sendFor($far), 'arrival', 'manual send ignores the window');
+    eq(Ydr\Reminders::sendFor($far), 'arrival', 'and can be repeated');
+    eq((int) Ydr\Db::one("SELECT COUNT(*) n FROM booking_reminders WHERE booking_id = ? AND kind = 'arrival'", [$far['id']])['n'], 1, 'one record');
+    $open = $mk(26, 'pending', ['holdUntil' => '']);
+    eq(Ydr\Reminders::sendFor($open), 'payment', 'a reservation with no hold date can still be reminded');
+    throws(fn () => Ydr\Reminders::sendFor($mk(27, 'cancelled')), '/confirmed bookings/');
+    throws(fn () => Ydr\Reminders::sendFor(array_merge($far, ['guestEmail' => ''])), '/no email/');
+    throws(fn () => Ydr\Reminders::sendFor(array_merge($far, ['checkIn' => $d(-4)])), '/already started/');
+    $r = Ydr\Reminders::admin();
+    eq(count($r['recent']) >= 2, true, 'recently sent list');
+    Ydr\Mailer::flushQueue();
+});
+
 echo "\n$pass passed, $fail failed  (test database: " . (Ydr\Db::driver() === 'mysql' ? 'MySQL ' . Ydr\Config::get()['db']['database'] : $tmp) . ")\n";
 exit($fail ? 1 : 0);

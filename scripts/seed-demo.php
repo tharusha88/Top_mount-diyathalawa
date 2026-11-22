@@ -24,7 +24,7 @@ if (in_array('--clear', $argv, true)) {
         if ($shared) { echo "A demo booking shares a bill with a real booking. Void that bill in Admin → Bills first.\n"; exit(1); }
         Db::transaction(function () use ($in) {
             Db::run("DELETE FROM bills WHERE id IN (SELECT bill_id FROM bookings WHERE id IN ($in) AND bill_id IS NOT NULL) OR booking_id IN ($in)");
-            foreach (['pos_charges', 'pos_payments', 'pos_log', 'booking_rooms'] as $t) Db::run("DELETE FROM $t WHERE booking_id IN ($in)");
+            foreach (['pos_charges', 'pos_payments', 'pos_log', 'booking_rooms', 'booking_reminders'] as $t) Db::run("DELETE FROM $t WHERE booking_id IN ($in)");
             Db::run("DELETE FROM bookings WHERE id IN ($in)");
         });
     }

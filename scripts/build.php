@@ -38,6 +38,7 @@ $add('public', '');                                                    // web ro
 $add('app', 'app');                                                    // application code (private)
 $add('views', 'views', fn ($r) => str_ends_with($r, '.html') || $r === '.htaccess');
 $files["$root/hosting/DEPLOY.md"] = 'DEPLOY.md';
+$files["$root/scripts/send-reminders.php"] = 'scripts/send-reminders.php';   // the daily cron job (command line only)
 
 // production .env: fresh secrets, resort details carried over from .env.example
 $b64url = fn (string $b) => rtrim(strtr(base64_encode($b), '+/', '-_'), '=');

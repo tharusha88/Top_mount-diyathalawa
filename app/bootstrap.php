@@ -22,6 +22,6 @@ if (!extension_loaded('pdo')) {
 }
 if (function_exists('mb_internal_encoding')) mb_internal_encoding('UTF-8');
 
-foreach (['Js', 'Config', 'RoomsSeed', 'Db', 'Settings', 'Media', 'Site', 'Bookings', 'Closures', 'Coupons', 'Pos', 'Docs', 'Finance', 'Smtp', 'Mailer', 'Whatsapp', 'Ical', 'Auth', 'Users', 'Http', 'RateLimit', 'App'] as $f) {
+foreach (['Js', 'Config', 'RoomsSeed', 'Db', 'Settings', 'Media', 'Site', 'Bookings', 'Closures', 'Coupons', 'Pos', 'Docs', 'Finance', 'Smtp', 'Mailer', 'Whatsapp', 'Reminders', 'Ical', 'Auth', 'Users', 'Http', 'RateLimit', 'App'] as $f) {
     require YDR_APP . "/$f.php";
 }

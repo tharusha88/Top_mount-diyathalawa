@@ -28,7 +28,11 @@ final class Settings
         'wa_alert_phone' => '94777368264',      // WhatsApp alert when a booking is confirmed (Admin → Settings): the resort's hotline
         'wa_alert_apikey' => '',                // from CallMeBot
         'wa_alert_on' => '1',
-        'ical_token' => '',                     // secret part of the Google Calendar link (made on first use)
+        'reminders_on' => '1',                  // email guests a reminder before arrival and before a reservation's hold runs out
+        'reminder_arrival_days' => '2',         // confirmed booking: remind this many days before check-in (0 = off)
+        'reminder_payment_days' => '1',         // pending reservation: remind this many days before the hold date (0 = off)
+        'reminders_last_run' => '',             // when the website last checked for reminders to send (YYYY-MM-DD HH)
+        'ical_token' => '',                    // secret part of the Google Calendar link (made on first use)
         'schema_version' => '0',
     ];
 

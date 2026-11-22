@@ -784,6 +784,7 @@ SQL;
         if ($ver < 7) self::migrateV7();
         if ($ver < 8) self::migrateV8();
         if ($ver < 9) self::migrateV9();
+        if ($ver < 10) self::migrateV10();
     }
 
     private static function setSchemaVersion(int $v): void
@@ -1085,6 +1086,30 @@ SQL;
         }
         self::setSchemaVersion(9);
         error_log('[db] added outdoor parties');
+    }
+
+    /** Version 10: a record of every reminder sent, so no guest is reminded twice. */
+    private static function migrateV10(): void
+    {
+        if (self::$driver === 'mysql') {
+            self::$pdo->exec("CREATE TABLE IF NOT EXISTS booking_reminders (
+                id         INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                booking_id INT UNSIGNED NOT NULL,
+                kind       VARCHAR(20) COLLATE utf8mb4_bin NOT NULL COMMENT 'arrival|payment',
+                sent_at    DATETIME(3) NOT NULL,
+                UNIQUE KEY uq_reminder (booking_id, kind)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        } else {
+            self::$pdo->exec("CREATE TABLE IF NOT EXISTS booking_reminders (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                booking_id INTEGER NOT NULL,
+                kind       TEXT NOT NULL,
+                sent_at    TEXT NOT NULL,
+                UNIQUE (booking_id, kind)
+            )");
+        }
+        self::setSchemaVersion(10);
+        error_log('[db] added booking reminders');
     }
 
     // ---------- timestamps ----------

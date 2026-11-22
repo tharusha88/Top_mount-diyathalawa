@@ -597,7 +597,8 @@ final class Finance
             $n = Bookings::nightsBetween($start, $stop);
             if ($n <= 0 || $b['nights'] <= 0) continue;
             $revenue = (int) round($b['totalAmount'] * $n / $b['nights']);
-            $roomIds = $b['kind'] === 'room' ? array_filter([$b['roomId']]) : array_column($b['rooms'] ?? [], 'id');
+            // every room the booking holds (a room booking can hold several), shared between them below
+            $roomIds = array_column($b['rooms'] ?? [], 'id') ?: array_filter([$b['roomId']]);
             $roomIds = array_values(array_filter(array_map('intval', $roomIds)));
             $roomNights += $n * max(1, count($roomIds));
             $guestNights += $n * ($b['adults'] + $b['children']);
