@@ -1,4 +1,8 @@
-/* Renders the data-driven parts of the page from window.TMR_CONTENT. */
+/* Renders the data-driven parts of the page from window.TMR_CONTENT.
+   The server draws the same markup first (app/Content.php), for search engines and AI assistants
+   that don't run scripts; this replaces it. A change to a template here belongs there too.
+   Photos keep their descriptions (alt) for image search: inside a button with its own aria-label,
+   screen readers still announce only the label. */
 (() => {
   const C = window.TMR_CONTENT;
   const { picture, esc, hydrate } = window.TMR;
@@ -59,7 +63,7 @@
   into('highlights', hls.map((h, i) => `
     <li class="hl-item${i === 0 ? ' is-active' : ''}" data-i="${i}">
       <button type="button" class="hl-item__btn" data-highlight="${i}" aria-label="${esc(h.title)}: open the photo full screen">
-        <span class="hl-item__img">${picture(h.image, { sizes: '(min-width: 900px) 54vw, (min-width: 600px) 60vw, 84vw', alt: '' })}</span>
+        <span class="hl-item__img">${picture(h.image, { sizes: '(min-width: 900px) 54vw, (min-width: 600px) 60vw, 84vw' })}</span>
         <span class="hl-item__shade" aria-hidden="true"></span>
         <span class="hl-item__tab" aria-hidden="true"><b>${pad(i + 1)}</b><span>${esc(h.title)}</span></span>
       </button>
@@ -85,7 +89,7 @@
     <li class="rcard" style="--i:${i}"${i >= ROOMS_STEP ? ' hidden' : ''}>
       <div class="rcard__float">
         <button type="button" class="rcard__btn" data-room="${i}" aria-label="${esc(r.name)}: view all ${n} photos">
-          <span class="rcard__img">${picture(r.photos[0], { sizes: '(min-width: 900px) 20vw, (min-width: 600px) 36vw, 64vw', alt: '' })}</span>
+          <span class="rcard__img">${picture(r.photos[0], { sizes: '(min-width: 900px) 20vw, (min-width: 600px) 36vw, 64vw' })}</span>
           <span class="rcard__shade" aria-hidden="true"></span>
           <span class="rcard__label" aria-hidden="true"><span class="rcard__kicker">${esc(kicker)}</span><span class="rcard__num${/^\d+$/.test(label) ? '' : ' rcard__num--name'}">${esc(label)}</span></span>
           <span class="rcard__more" aria-hidden="true">${gridIcon}<span class="rcard__count">${n}</span><span class="rcard__cta">View photos</span></span>
@@ -142,7 +146,7 @@
   into('nearby', near.map((n, i) => `
     <li class="place" data-km="${n.km}">
       <button type="button" class="place__media" data-place="${i}" aria-label="View photo: ${esc(n.name)}">
-        ${picture(n.image, { sizes: '(min-width: 900px) 26vw, 72vw', alt: '' })}
+        ${picture(n.image, { sizes: '(min-width: 900px) 26vw, 72vw' })}
         <span class="place__km">${n.km} km</span>
       </button>
       <div class="place__body">

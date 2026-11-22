@@ -65,6 +65,18 @@ booking page are served by PHP.
   with a shared secret. The conversation is kept in the visitor's browser for the visit only.
   The same bot can later answer the resort's WhatsApp through a CRM.
 
+- **Search engines and AI assistants** (Google, Bing, ChatGPT, Copilot, Gemini, Claude, Perplexity):
+  the server draws the home page's rooms, experiences, dining, places nearby and contact details
+  into the page (`app/Content.php` reads `js/data/content.js` and `media.js`; `render.js` redraws
+  the same markup in the browser, so a template change belongs in both). `app/Seo.php` adds the
+  canonical link, social card tags, structured data (JSON-LD: the resort as a schema.org `Resort`,
+  the website, the page, the film, places nearby, the booking page's breadcrumb and a `FAQPage`),
+  the **Questions, answered** section on the home page (built from `content.js` and the booking
+  system's rates, meal plans, advance and cancellation policy), `/robots.txt`, `/sitemap.xml` with
+  the photos, `/llms.txt`, and the IndexNow key file. `.env`: `GOOGLE_SITE_VERIFICATION`,
+  `BING_SITE_VERIFICATION`, `INDEXNOW_KEY` (then `php scripts/indexnow.php` after each upload) and
+  `CANONICAL_REDIRECT`. Going live: "Search engines" in `hosting/DEPLOY.md`.
+
 Booking references look like `TMR-7K3M9Q`. Double bookings are impossible: every booking is checked
 and saved inside a database transaction.
 
@@ -87,6 +99,8 @@ D:/xampp/php/php.exe -d extension=gd -S localhost:3100 -t public public/index.ph
 - `php scripts/seed-demo.php` adds a few sample bookings so the admin panel and POS have something
   to show; `php scripts/seed-demo.php --clear` removes them.
 - `php tests/confirmations_test.php` runs the booking-confirmation link tests the same way.
+- `php tests/seo_test.php` checks what search engines read: the `content.js` reader, the server-drawn
+  home page, the structured data, robots.txt, the sitemap and llms.txt.
 - `php tests/bookings_test.php` runs the booking and POS rule tests on a throwaway SQLite file
   (never the real database). The tests use their own fixed sample rooms (`tests/seed.php`).
 - `php public/check.php` runs the hosting check from the command line.

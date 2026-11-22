@@ -153,6 +153,42 @@ login, and that private files can't be downloaded. Fix anything red, then reload
 - **Updating the site files later:** upload the changed files over the old ones. The bookings
   live in MySQL, so they are not affected.
 
+## Search engines (Google, Bing) and AI assistants
+
+The site already gives search engines and AI assistants (ChatGPT, Copilot, Gemini, Claude,
+Perplexity) what they need: the home page's text, rooms, places nearby and contact details are in
+the page itself (not only drawn by JavaScript), with structured data for the resort, its questions
+and answers, `/sitemap.xml` (with the photos), `/robots.txt` and `/llms.txt`. Once the site is on
+its own domain:
+
+1. **Use the resort's own domain.** Set `BASE_URL=https://yourdomain.com` (every canonical link,
+   the sitemap and the structured data use it). When it works, set `CANONICAL_REDIRECT=true` so
+   the hosting's temporary address and `www.` (or the bare domain) move to it for good, and force
+   HTTPS (cPanel → Domains → Force HTTPS Redirect, or the lines in `.htaccess`).
+2. **Pin the map.** In **Admin → Website**, set the map location (latitude, longitude, from Google
+   Maps: right-click the resort's pin) and the plus code. It goes into the structured data, which
+   is what local search and "near me" answers use.
+3. **Google Search Console** (search.google.com/search-console): *Add property → URL prefix →
+   HTML tag*. Put the `content="…"` value in `GOOGLE_SITE_VERIFICATION`, upload `.env`, press
+   *Verify*. Then *Sitemaps → add* `sitemap.xml`.
+4. **Bing Webmaster Tools** (bing.com/webmasters): you can *import from Google Search Console*, or
+   add the site with the *HTML Meta Tag* option and put its `content="…"` value in
+   `BING_SITE_VERIFICATION`. Submit `sitemap.xml` there too. Bing's index also feeds ChatGPT
+   search and Copilot.
+5. **IndexNow** (Bing re-reads the site within minutes): put a key in `INDEXNOW_KEY` (any 8 to
+   128 letters, digits or dashes, e.g. from `php -r "echo bin2hex(random_bytes(16));"`), upload
+   `.env`, and after each change to the website run `php scripts/indexnow.php` (from Hostinger /
+   cPanel → Terminal, or `--dry-run` to see what it sends).
+6. **Google Business Profile** (business.google.com): claim or create the resort's listing with
+   exactly the same name, address and phone number as the website, and link it to the website.
+   Do the same in Bing Places (it can import from Google). Matching details are a strong local
+   signal.
+7. **Check it.** Test the home page in Google's Rich Results Test (search.google.com/test/rich-results)
+   and the Schema Markup Validator (validator.schema.org).
+
+Real guest reviews (copied word for word with permission) go in `content.js` → `reviews`; the
+reviews section appears by itself once there is one. Never add reviews or ratings that aren't real.
+
 ## Backups (important)
 
 All bookings are in the MySQL database. Back it up regularly with **phpMyAdmin → select the

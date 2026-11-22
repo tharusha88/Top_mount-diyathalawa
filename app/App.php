@@ -117,6 +117,7 @@ final class App
             if (!$res->done) $res->json(['error' => 'Not found'], 404);
             return;
         }
+        if (self::canonicalRedirect($req, $res)) return;
         self::pages($req, $res);
         if (!$res->done) $res->send(self::render404(), 'text/html; charset=utf-8', 404);
     }
@@ -1121,14 +1122,50 @@ final class App
             $res->send(Ical::feed(), 'text/calendar; charset=utf-8');
             return;
         }
+        // for search engines and AI assistants (Seo)
         if (self::route('/robots.txt', $p)) {
-            $res->send("User-agent: *\nDisallow: /admin/\nDisallow: /pos\nDisallow: /api/\nSitemap: {$cfg['baseUrl']}/sitemap.xml\n", 'text/plain; charset=utf-8');
+            $res->send(Seo::robots(), 'text/plain; charset=utf-8');
             return;
         }
         if (self::route('/sitemap.xml', $p)) {
-            $res->send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>' . $cfg['baseUrl'] . '/</loc></url><url><loc>' . $cfg['baseUrl'] . '/book</loc></url></urlset>', 'application/xml; charset=utf-8');
+            $res->header('Cache-Control', 'public, max-age=3600');
+            $res->send(Seo::sitemap(), 'application/xml; charset=utf-8');
             return;
         }
+        if (self::route('/llms.txt', $p)) {
+            $res->header('Cache-Control', 'public, max-age=3600');
+            $res->header('X-Robots-Tag', 'noindex'); // for AI assistants to read, not a page to list in search results
+            $res->send(Seo::llms(), 'text/markdown; charset=utf-8');
+            return;
+        }
+        // IndexNow (Bing, Yandex, Seznam, Naver): the key file that proves scripts/indexnow.php speaks for this site
+        $key = Seo::indexNowKey();
+        if ($key !== '' && strcasecmp($p, "/$key.txt") === 0) {
+            $res->send($key, 'text/plain; charset=utf-8');
+            return;
+        }
+    }
+
+    /**
+     * CANONICAL_REDIRECT=true: a page asked for at any other host (the hosting's temporary address,
+     * www. or not) moves for good (301) to the same path at BASE_URL, so search engines list one
+     * address. The API and calendar feeds are left alone. Only the host is compared, never
+     * http / https, so it can't loop behind a proxy: force HTTPS in .htaccess or the hosting panel.
+     */
+    private static function canonicalRedirect(Request $req, Response $res): bool
+    {
+        $cfg = Config::get();
+        if (!$cfg['seo']['canonicalRedirect'] || !self::isGet($req)) return false;
+        if (preg_match('#^/(api|calendar|\.well-known)(/|$)#i', $req->path)) return false;
+        $want = parse_url($cfg['baseUrl']);
+        if (!is_array($want) || empty($want['host'])) return false;
+        $wantHost = strtolower($want['host']) . (isset($want['port']) ? ':' . $want['port'] : '');
+        $host = strtolower((string) ($req->header('x-forwarded-host') ?? $req->header('host') ?? ''));
+        $host = trim(explode(',', $host)[0]);
+        if ($host === '' || $host === $wantHost) return false;
+        $res->header('Cache-Control', 'public, max-age=3600');
+        $res->redirect(301, $cfg['baseUrl'] . ($_SERVER['REQUEST_URI'] ?? '/'));
+        return true;
     }
 
     private static function esc(mixed $s): string
@@ -1189,6 +1226,9 @@ final class App
             $hero = Site::hero();
             $tokens['home.heroPreload'] = $hero ? self::heroPreload($hero[0]['key']) : '';
             $tokens['home.heroCaption'] = self::esc($hero[0]['caption'] ?? '');
+            // what readers that don't run the scripts see too (search engines, AI assistants):
+            // the parts render.js draws, and the questions and answers (Content, Seo)
+            $tokens += Content::homeTokens() + ['home.faq' => Seo::faqHtml()];
         }
         // the cancellation policy under the booking steps (Admin → Booking setup); nothing when it's empty
         if ($name === 'book.html') $tokens['book.policy'] = self::policySection(Bookings::cancellationPolicy());
@@ -1200,8 +1240,14 @@ final class App
             $tokens['book.perk'] = $adv ? 'Confirmed once the advance is paid' : 'Nothing to pay now — pay at the resort';
         }
         $tpl = (string) file_get_contents(YDR_ROOT . '/views/' . $name);
-        $html = preg_replace_callback('/\{\{\s*([\w.]+)\s*\}\}/', fn ($m) => array_key_exists($m[1], $tokens) ? $tokens[$m[1]] : $m[0], $tpl);
-        $html = self::versionAssets((string) $html);
+        $html = (string) preg_replace_callback('/\{\{\s*([\w.]+)\s*\}\}/', fn ($m) => array_key_exists($m[1], $tokens) ? $tokens[$m[1]] : $m[0], $tpl);
+        // the public pages' search tags and structured data (built from the finished page's title and description)
+        if ($name === 'index.html' || $name === 'book.html') {
+            $page = $name === 'index.html' ? 'home' : 'book';
+            $html = strtr($html, ['{{seo.head}}' => Seo::headTags($page), '{{seo.jsonld}}' => Seo::jsonLd($page, $html)]);
+            if ($page === 'home') $html = Content::dropEmptyReviews($html);
+        }
+        $html = self::versionAssets($html);
         $res->header('Cache-Control', $name === 'confirm.html' ? 'no-store' : 'no-cache'); // a guest's confirmation page holds their details
         $res->send((string) $html, 'text/html; charset=utf-8');
     }

@@ -111,6 +111,14 @@ final class Config
                 'pass' => self::env('SMTP_PASS'),
                 'from' => self::env('MAIL_FROM', 'Top Mountain Resort <bookings@example.com>'),
             ],
+            // search engines (Seo.php): Google Search Console and Bing Webmaster Tools verification
+            // codes, the IndexNow key, and the 301 from any other address to BASE_URL's
+            'seo' => [
+                'googleVerification' => self::env('GOOGLE_SITE_VERIFICATION'),
+                'bingVerification' => self::env('BING_SITE_VERIFICATION'),
+                'indexNowKey' => self::env('INDEXNOW_KEY'),
+                'canonicalRedirect' => self::bool('CANONICAL_REDIRECT', false),
+            ],
             // the website's chatbot on the Panora chatbot platform (Chatbot.php); empty URL or secret = off
             'chatbot' => [
                 'url' => rtrim(self::env('CHATBOT_URL'), '/'),

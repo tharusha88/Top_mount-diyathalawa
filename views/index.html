@@ -4,11 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#F7F5EF">
-<title>Top Mountain Resort · A hidden sanctuary in the hills of Diyatalawa</title>
-<meta name="description" content="Top Mountain Resort is a 3-acre estate in the cool, pine-covered hills of Diyatalawa, Sri Lanka, with wooden cabanas, a clay-walled mud house, villas and a whole bungalow.">
+<title>Top Mountain Resort · Cabanas &amp; Villas in Diyatalawa, Sri Lanka</title>
+<meta name="description" content="A 3-acre resort in the cool, pine-covered hills of Diyatalawa, Sri Lanka: wooden cabanas, a clay-walled mud house, villas and a whole bungalow. Book direct.">
 <meta property="og:title" content="Top Mountain Resort · Diyatalawa, Sri Lanka">
 <meta property="og:description" content="Timber cabanas, a clay mud house and bright villas on a 3-acre estate in the pine hills of Diyatalawa.">
 <meta property="og:type" content="website">
+<!-- canonical, robots, social image, verification codes, place and the hero preload (Seo::headTags) -->
+{{seo.head}}
 <link rel="icon" href="/assets/icons/favicon.ico" sizes="48x48">
 <link rel="icon" href="/assets/icons/icon-192.png" type="image/png" sizes="192x192">
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
@@ -28,6 +30,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/style.css">
 <link rel="stylesheet" href="/css/chat.css">
+<!-- structured data: the resort, website, page, film, places nearby, questions and answers (Seo::jsonLd) -->
+{{seo.jsonld}}
 </head>
 <body>
 
@@ -71,8 +75,8 @@
     <a class="btn btn--solid btn--block" href="/book?go=rooms">Book your stay <svg class="i-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></a>
     <div class="menu__contact">
       <p class="eyebrow">Hotline</p>
-      <div class="menu__phones" data-contact="phones"></div>
-      <p class="menu__addr" data-contact="address"></p>
+      <div class="menu__phones" data-contact="phones">{{ssr.phones}}</div>
+      <p class="menu__addr" data-contact="address">{{ssr.address}}</p>
     </div>
   </div>
 </div>
@@ -134,7 +138,7 @@
           </div>
         </div>
       </header>
-      <ol class="hl__track" data-defer-group data-render="highlights" aria-label="Highlights around the estate"></ol>
+      <ol class="hl__track" data-defer-group data-render="highlights" aria-label="Highlights around the estate" style="--n:{{ssr.hlCount}}">{{ssr.highlights}}</ol>
       <p class="sr-only" aria-live="polite" data-hl-live></p>
     </div>
   </div>
@@ -161,7 +165,7 @@
         <ol class="discover__chapters">
           <li class="dchap"><span class="dchap__n">i.</span><h3>Three acres of hillside</h3><p>Cabanas, villas and a mud house spread down a wooded slope, joined by garden paths.</p></li>
           <li class="dchap"><span class="dchap__n">ii.</span><h3>Pine, mist and tea country</h3><p>The cool hills of Diyatalawa, with tea terraces across the valley and morning mist lifting off the slopes.</p></li>
-          <li class="dchap"><span class="dchap__n">iii.</span><h3>Ella within a day trip</h3><p>Waterfalls, peaks and tea factories, from <span data-km="min">13</span> to <span data-km="max">51</span> km away.</p></li>
+          <li class="dchap"><span class="dchap__n">iii.</span><h3>Ella within a day trip</h3><p>Waterfalls, peaks and tea factories, from <span data-km="min">{{ssr.kmMin}}</span> to <span data-km="max">{{ssr.kmMax}}</span> km away.</p></li>
         </ol>
         <div class="discover__bar" aria-hidden="true"><i></i></div>
       </div>
@@ -200,10 +204,10 @@
       <p class="stays__lede" data-fade>Open any room to see every photo of it.</p>
     </header>
 
-    <ol class="rgal" id="rooms-list" data-defer-group data-render="rooms" aria-label="Rooms"></ol>
+    <ol class="rgal" id="rooms-list" data-defer-group data-render="rooms" aria-label="Rooms">{{ssr.rooms}}</ol>
 
     <div class="stays__more">
-      <p class="stays__shown" aria-live="polite">Showing <b>5</b> of <span data-render="rooms-total">20</span> rooms</p>
+      <p class="stays__shown" aria-live="polite">Showing <b>5</b> of <span data-render="rooms-total">{{ssr.roomsTotal}}</span> rooms</p>
       <button type="button" class="stays__morebtn" aria-controls="rooms-list" aria-expanded="false" hidden>
         <span class="stays__morelabel">Show more rooms</span>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6"/></svg>
@@ -242,16 +246,16 @@
     </header>
     <div class="exp__cards">
       <div class="exp__panel" id="xp-panel-experiences" role="tabpanel" aria-labelledby="tab-experiences">
-        <ol class="xp-grid" data-defer-group data-render="experiences" aria-label="Experiences"></ol>
+        <ol class="xp-grid" data-defer-group data-render="experiences" aria-label="Experiences">{{ssr.experiences}}</ol>
         <div class="xp-progress" aria-hidden="true">
-          <span class="xp-progress__count"><b>01</b> / <span data-render="experiences-total">06</span></span>
+          <span class="xp-progress__count"><b>01</b> / <span data-render="experiences-total">{{ssr.xpTotal}}</span></span>
           <span class="xp-progress__bar"><i></i></span>
         </div>
       </div>
       <div class="exp__panel" id="xp-panel-dining" role="tabpanel" aria-labelledby="dining" hidden>
-        <ol class="xp-grid" data-defer-group data-render="dining-cards" aria-label="Dining"></ol>
+        <ol class="xp-grid" data-defer-group data-render="dining-cards" aria-label="Dining">{{ssr.dining}}</ol>
         <div class="xp-progress" aria-hidden="true">
-          <span class="xp-progress__count"><b>01</b> / <span data-render="dining-total">05</span></span>
+          <span class="xp-progress__count"><b>01</b> / <span data-render="dining-total">{{ssr.diningTotal}}</span></span>
           <span class="xp-progress__bar"><i></i></span>
         </div>
       </div>
@@ -318,8 +322,8 @@
         <p class="bresult__note"></p>
         <div class="bresult__actions">
           <a class="btn btn--solid bresult__book" href="/book">Choose your room <svg class="i-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></a>
-          <a class="btn bresult__call" data-contact="tel" href="#">Call <span data-contact="tel-label"></span></a>
-          <a class="btn btn--outline bresult__wa" data-contact="whatsapp" href="#" target="_blank" rel="noopener">Send on WhatsApp</a>
+          <a class="btn bresult__call" data-contact="tel" href="{{ssr.tel}}">Call <span data-contact="tel-label">{{ssr.telLabel}}</span></a>
+          <a class="btn btn--outline bresult__wa" data-contact="whatsapp" href="{{ssr.wa}}" target="_blank" rel="noopener">Send on WhatsApp</a>
           <button type="button" class="link-arrow bresult__edit">Change details</button>
         </div>
       </div>
@@ -336,13 +340,13 @@
         <span class="ln"><span>Hidden, not hard</span></span>
         <span class="ln"><span><em>to find.</em></span></span>
       </h2>
-      <address class="loc__addr" data-contact="address" data-fade></address>
+      <address class="loc__addr" data-contact="address" data-fade>{{ssr.address}}</address>
       <div class="loc__ctas" data-fade>
-        <a class="btn btn--solid" data-contact="maps" href="#" target="_blank" rel="noopener">Get directions <svg class="i-ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16 16.5 7.5M9 7h8v8"/></svg></a>
-        <a class="btn btn--outline" data-contact="tel" href="#">Call <span data-contact="tel-label"></span></a>
+        <a class="btn btn--solid" data-contact="maps" href="{{ssr.maps}}" target="_blank" rel="noopener">Get directions <svg class="i-ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16 16.5 7.5M9 7h8v8"/></svg></a>
+        <a class="btn btn--outline" data-contact="tel" href="{{ssr.tel}}">Call <span data-contact="tel-label">{{ssr.telLabel}}</span></a>
       </div>
     </div>
-    <dl class="loc__facts" data-render="location"></dl>
+    <dl class="loc__facts" data-render="location">{{ssr.location}}</dl>
   </div>
 
   <div class="near">
@@ -352,13 +356,13 @@
           <span class="ln"><span>Waterfalls, peaks</span></span>
           <span class="ln"><span><em>and tea country.</em></span></span>
         </h3>
-        <p class="lede" data-fade><span data-count="nearby">16</span> places within a day trip of the resort, from <span data-km="min">13</span> to <span data-km="max">51</span> km away.</p>
+        <p class="lede" data-fade><span data-count="nearby">{{ssr.nearbyCount}}</span> places within a day trip of the resort, from <span data-km="min">{{ssr.kmMin}}</span> to <span data-km="max">{{ssr.kmMax}}</span> km away.</p>
       </div>
       <div class="near__ctrl">
         <div class="scale" aria-hidden="true">
           <span class="scale__lbl">Resort</span>
           <span class="scale__line"><i class="scale__fill"></i><b class="scale__dot"><em class="scale__km">13 km</em></b></span>
-          <span class="scale__lbl"><span data-km="max">51</span> km</span>
+          <span class="scale__lbl"><span data-km="max">{{ssr.kmMax}}</span> km</span>
         </div>
         <!-- the wall drifts on its own; this stops (and restarts) it -->
         <button type="button" class="round-btn near__auto" aria-label="Pause the moving photos">
@@ -371,20 +375,38 @@
         </div>
       </div>
     </div>
-    <ul class="rail" data-defer-group data-render="nearby" tabindex="0" aria-label="Places near the resort, sorted by distance"></ul>
+    <ul class="rail" data-defer-group data-render="nearby" tabindex="0" aria-label="Places near the resort, sorted by distance">{{ssr.nearby}}</ul>
     <div class="wrap near__also">
       <p class="eyebrow">Also close by</p>
-      <ul data-render="also"></ul>
+      <ul data-render="also">{{ssr.also}}</ul>
     </div>
   </div>
 </section>
 
-<!-- ============ 10. GUEST REVIEWS (verified only; removed when there are none) ============ -->
+<!-- ============ 10. QUESTIONS & ANSWERS ============ -->
+<!-- for guests, and for search engines and AI assistants (the same text is the page's FAQPage data).
+     Every answer is built from content.js and the booking system's settings: Seo::faq() -->
+<section class="faq section" id="faq" aria-labelledby="faq-title">
+  <div class="wrap faq__grid">
+    <header class="faq__head">
+      <p class="eyebrow" data-fade><span class="eyebrow__n">05</span>Good to know</p>
+      <h2 class="display display--sm" id="faq-title" data-split>
+        <span class="ln"><span>Questions,</span></span>
+        <span class="ln"><span><em>answered.</em></span></span>
+      </h2>
+      <p class="lede" data-fade>Where we are, the rooms, food, getting around and how to book. For anything else, call or send us a WhatsApp message.</p>
+    </header>
+    <div class="faq__list" data-fade>{{home.faq}}</div>
+  </div>
+</section>
+
+<!-- ============ 11. GUEST REVIEWS (verified only; left out of the page while there are none) ============ -->
+<!-- reviews -->
 <section class="reviews section" id="reviews" aria-labelledby="reviews-title" data-optional="reviews">
   <div class="wrap reviews__inner">
     <p class="eyebrow eyebrow--center">Guests</p>
     <h2 class="sr-only" id="reviews-title">Guest reviews</h2>
-    <div class="reviews__list" data-render="reviews" aria-live="polite"></div>
+    <div class="reviews__list" data-render="reviews" aria-live="polite">{{ssr.reviews}}</div>
     <div class="reviews__nav">
       <button type="button" class="round-btn" data-review="-1" aria-label="Previous review"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12H5m5.5-6-6 6 6 6"/></svg></button>
       <button type="button" class="round-btn" data-review="1" aria-label="Next review"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></button>
@@ -392,17 +414,18 @@
     <a class="link-arrow" data-render="reviews-link" href="#" target="_blank" rel="noopener">Read more reviews <svg class="i-ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16 16.5 7.5M9 7h8v8"/></svg></a>
   </div>
 </section>
+<!-- /reviews -->
 
 </main>
 
-<!-- ============ 11. FOOTER ============ -->
+<!-- ============ 12. FOOTER ============ -->
 <footer class="foot" aria-labelledby="foot-title">
   <div class="wrap">
     <div class="foot__main">
       <div class="foot__brand" data-fade>
         <h2 class="foot__name" id="foot-title"><span class="logo foot__logo" aria-hidden="true"></span><span class="sr-only">Top Mountain Resort</span></h2>
         <p class="foot__line">A hidden sanctuary in the cool, pine-covered hills of Diyatalawa.</p>
-        <div class="foot__social" data-optional="socials"><div data-contact="socials"></div></div>
+        <div class="foot__social" data-optional="socials"><div data-contact="socials">{{ssr.socials}}</div></div>
       </div>
 
       <nav class="foot__col foot__nav" aria-label="Footer" data-fade>
@@ -412,6 +435,7 @@
           <li><a href="#experiences">Experiences</a></li>
           <li><a href="#dining">Dining</a></li>
           <li><a href="#location">Location</a></li>
+          <li><a href="#faq">Questions</a></li>
         </ul>
       </nav>
 
@@ -419,21 +443,21 @@
         <h3>Reservations</h3>
         <!-- the first number shows large; the rest sit on the small line with WhatsApp -->
         <div class="foot__reach">
-          <div class="foot__phones" data-contact="phones"></div>
-          <a class="foot__wa" data-contact="whatsapp" href="#" target="_blank" rel="noopener">WhatsApp <svg class="i-ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16 16.5 7.5M9 7h8v8"/></svg></a>
+          <div class="foot__phones" data-contact="phones">{{ssr.phones}}</div>
+          <a class="foot__wa" data-contact="whatsapp" href="{{ssr.wa}}" target="_blank" rel="noopener">WhatsApp <svg class="i-ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16 16.5 7.5M9 7h8v8"/></svg></a>
         </div>
         <a class="btn btn--ivory foot__cta" href="/book?go=rooms">Book your stay <svg class="i-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></a>
       </div>
 
       <div class="foot__col foot__visit" data-fade>
         <h3>Visit</h3>
-        <address data-contact="address"></address>
-        <a class="foot__go" data-contact="maps" href="#" target="_blank" rel="noopener">Directions <svg class="i-ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16 16.5 7.5M9 7h8v8"/></svg></a>
+        <address data-contact="address">{{ssr.address}}</address>
+        <a class="foot__go" data-contact="maps" href="{{ssr.maps}}" target="_blank" rel="noopener">Directions <svg class="i-ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16 16.5 7.5M9 7h8v8"/></svg></a>
       </div>
     </div>
 
     <div class="foot__legal">
-      <p>© <span data-year>2026</span> Top Mountain Resort</p>
+      <p>© <span data-year>{{year}}</span> Top Mountain Resort</p>
       <p class="foot__time" data-localtime hidden><i aria-hidden="true"></i><b data-localtime-value></b> at the resort</p>
       <a href="#top" class="foot__up">Back to top <span class="foot__up-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></span></a>
     </div>
@@ -442,7 +466,7 @@
 
 <!-- phone contact bar: call or WhatsApp the resort from anywhere on the page (phones and small tablets only) -->
 <div class="mbar" role="group" aria-label="Call or book">
-  <a class="mbar__btn mbar__btn--call" data-contact="tel" href="#">
+  <a class="mbar__btn mbar__btn--call" data-contact="tel" href="{{ssr.tel}}">
     <span class="mbar__ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5.5 3.5h3l1.6 4.3-2 1.3a11 11 0 0 0 6.8 6.8l1.3-2 4.3 1.6v3a2 2 0 0 1-2.2 2A17.5 17.5 0 0 1 3.5 5.7a2 2 0 0 1 2-2.2Z"/></svg></span>
     <span class="mbar__label">Call now</span>
   </a>

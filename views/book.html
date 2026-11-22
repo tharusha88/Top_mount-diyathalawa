@@ -3,12 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Book your stay — {{site.name}}</title>
-  <meta name="description" content="Book your stay at Top Mountain Resort in Diyatalawa directly, with live availability. No payment needed now.">
+  <title>Book {{site.name}}, Diyatalawa · Live availability</title>
+  <meta name="description" content="Book {{site.name}} in Diyatalawa direct: see which cabanas, villas and rooms are free on your dates and book in a few minutes. No payment online.">
   <meta name="theme-color" content="#F7F5EF">
-  <link rel="canonical" href="{{baseUrl}}/book">
   <meta property="og:title" content="Book your stay — {{site.name}}">
-  <meta property="og:image" content="{{baseUrl}}/assets/media/img/hero-poster-1200.jpg">
+  <meta property="og:description" content="Live availability for the cabanas, villas and rooms of {{site.name}} in Diyatalawa. Book direct in a few minutes, with no payment online.">
+  <meta property="og:type" content="website">
+  <!-- canonical, robots, social image, verification codes and place (Seo::headTags) -->
+  {{seo.head}}
   <link rel="icon" href="/assets/icons/favicon.ico" sizes="48x48">
   <link rel="icon" href="/assets/icons/icon-192.png" type="image/png" sizes="192x192">
   <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
@@ -18,6 +20,8 @@
   <link rel="stylesheet" href="/css/booking-base.css">
   <link rel="stylesheet" href="/css/book.css">
   <link rel="stylesheet" href="/css/chat.css">
+  <!-- structured data: the booking page, its breadcrumb and the resort (Seo::jsonLd) -->
+  {{seo.jsonld}}
 </head>
 <body class="book-page is-loaded">
   <a class="skip" href="#main">Skip to content</a>
