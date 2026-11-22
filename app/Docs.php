@@ -33,7 +33,13 @@ final class Docs
 
     public static function invoiceUrl(array $b): string
     {
-        return Config::get()['baseUrl'] . '/invoice/' . rawurlencode($b['ref']) . '/' . self::code("invoice|{$b['id']}|{$b['ref']}");
+        return Config::get()['baseUrl'] . self::invoicePath($b);
+    }
+
+    /** "/invoice/REF/code" (the guest's payment slips go to /api + this + /slip). */
+    public static function invoicePath(array $b): string
+    {
+        return '/invoice/' . rawurlencode($b['ref']) . '/' . self::code("invoice|{$b['id']}|{$b['ref']}");
     }
 
     public static function receiptUrl(int $paymentId): string
@@ -182,18 +188,25 @@ final class Docs
     }
 
     // ---------- the payment invoice ----------
-    /** What the guest owes now: ['paid', 'due', 'dueLabel', 'advance'] */
+    /**
+     * What the guest owes now: ['paid', 'due', 'dueLabel', 'advance' (an advance smaller than the
+     * total, 0 = none), 'atResort' (a booking that asks for no advance: it is all paid at the resort)]
+     */
     public static function amounts(array $b): array
     {
-        $pay = Bookings::paymentInfo();
         $paid = 0;
         foreach (Pos::bookingPayments($b['id']) as $p) if (!$p['voided']) $paid += $p['amount'];
-        $advance = Bookings::advanceDue($b['totalAmount']);
-        if ($b['status'] === 'pending' && $advance > 0 && $paid < $advance) {
-            return ['paid' => $paid, 'due' => $advance - $paid, 'dueLabel' => 'Advance to pay now (' . $pay['advancePct'] . '%)', 'advance' => $advance];
+        $adv = $b['advance'];
+        $balance = max(0, $b['totalAmount'] - $paid);
+        if (!$adv['required'] && in_array($b['status'], ['pending', 'confirmed'], true)) {
+            return ['paid' => $paid, 'due' => $balance, 'dueLabel' => 'To pay at the resort', 'advance' => 0, 'atResort' => true];
         }
-        $due = max(0, $b['totalAmount'] - $paid);
-        return ['paid' => $paid, 'due' => $due, 'dueLabel' => $b['status'] === 'pending' ? 'Amount to pay' : 'Balance due', 'advance' => $advance];
+        $advance = $adv['full'] ? 0 : $adv['amount'];
+        if ($b['status'] === 'pending' && $advance > 0 && $paid < $advance) {
+            $label = 'Advance to pay now' . ($adv['pct'] !== null ? ' (' . $adv['pct'] . '%)' : '');
+            return ['paid' => $paid, 'due' => $advance - $paid, 'dueLabel' => $label, 'advance' => $advance, 'atResort' => false];
+        }
+        return ['paid' => $paid, 'due' => $balance, 'dueLabel' => $b['status'] === 'pending' ? 'Amount to pay' : 'Balance due', 'advance' => $advance, 'atResort' => false];
     }
 
     public static function invoiceHtml(array $b, bool $embed = false): string
@@ -204,7 +217,8 @@ final class Docs
         $cancelled = $b['status'] === 'cancelled';
         $title = $b['status'] === 'pending' ? 'Reservation invoice' : 'Invoice';
         $status = match ($b['status']) {
-            'pending' => 'Reservation' . ($b['holdUntil'] ? ' · held until <b>' . self::esc(self::date($b['holdUntil'])) . '</b>' : '') . ' · confirmed once the advance is paid',
+            'pending' => $a['atResort'] ? 'Reservation · nothing to pay before you arrive · we call you to confirm it'
+                : 'Reservation' . ($b['holdUntil'] ? ' · held until <b>' . self::esc(self::date($b['holdUntil'])) . '</b>' : '') . ' · confirmed once the advance is paid',
             'confirmed' => 'Confirmed booking',
             'checked_in' => 'Staying with us now',
             'checked_out' => 'Stay completed',
@@ -222,7 +236,7 @@ final class Docs
             . ($b['guestPhone'] !== '' ? '<span>' . self::esc($b['guestPhone']) . '</span>' : '')
             . ($b['guestEmail'] !== '' ? '<span>' . self::esc($b['guestEmail']) . '</span>' : '')
             . ($b['guestIdNo'] !== '' ? '<span>NIC / passport ' . self::esc($b['guestIdNo']) . '</span>' : '') . '</div>';
-        $what = $b['kind'] === 'room' ? (string) $b['roomName'] : $b['packageLabel'];
+        $what = $b['kind'] === 'room' ? (string) ($b['place'] ?: $b['roomName']) : $b['packageLabel'];
         $stay = '<div><small>' . ($b['kind'] === 'day_out' ? 'Visit' : ($b['kind'] === 'event' ? 'Party' : 'Stay')) . '</small><b>' . self::esc($what) . '</b><span>' . self::esc(self::when($b)) . '</span>'
             . (self::guests($b) !== '' ? '<span>' . self::esc(self::guests($b)) . '</span>' : '') . '</div>';
         $advanceNow = !$cancelled && $b['status'] === 'pending' && $a['advance'] > 0 && $a['paid'] < $a['advance'];
@@ -233,15 +247,26 @@ final class Docs
         $service = Pos::servicePct();
         $note = ($service ? "A $service% service charge is added to the final bill at the resort. " : '') . 'Food and drinks ordered during the stay are billed separately.';
         $hasBank = $pay['accountNo'] !== '';
+        // the guest sends their payment slip from here (on screen only: not inside the admin panel, never printed)
+        $toTransfer = !$cancelled && !$a['atResort'] && $a['due'] > 0 && in_array($b['status'], ['pending', 'confirmed'], true);
+        $sent = Pos::guestSlipsPublic($b['id']);
+        $slipBox = !$embed && Pos::takesGuestSlips($b) && ($toTransfer || $sent) ? self::slipBox($b, $sent, $toTransfer ? $a['due'] : 0) : '';
         $payBox = '';
-        if (!$cancelled && $a['due'] > 0 && in_array($b['status'], ['pending', 'confirmed'], true)) {
+        if (!$cancelled && $a['atResort']) {
+            // no advance: nothing to transfer, it is all settled at the resort
+            $payBox = '<section class="doc__pay"><h3>Payment</h3><p>Nothing to pay before you arrive: '
+                . ($a['due'] > 0 ? 'the <b>' . self::money($a['due']) . '</b> is paid at the resort.' : 'there is nothing left to pay.')
+                . ' For any questions, or if your plans change, call <b>' . self::esc($pay['phone']) . '</b> quoting <b>' . self::esc($b['ref']) . '</b>.</p>'
+                . ($pay['note'] !== '' ? '<p class="doc__small">' . nl2br(self::esc($pay['note'])) . '</p>' : '') . '</section>';
+        } elseif (!$cancelled && $a['due'] > 0 && in_array($b['status'], ['pending', 'confirmed'], true)) {
             $dl = '';
             foreach ([['Bank', $pay['bank']], ['Account name', $pay['accountName']], ['Account number', $pay['accountNo']], ['Branch', $pay['branch']], ['Payment reference', $b['ref']]] as [$k, $v]) {
                 if ($v !== '') $dl .= '<dt>' . $k . '</dt><dd>' . self::esc($v) . '</dd>';
             }
             $by = $b['status'] === 'pending' && $b['holdUntil'] ? ' by <b>' . self::esc(self::date($b['holdUntil'], 'l j F Y')) . '</b>' : '';
             $ask = $hasBank
-                ? "Please pay <b>" . self::money($a['due']) . "</b>$by to the account below, quoting <b>" . self::esc($b['ref']) . '</b>, then call <b>' . self::esc($pay['phone']) . '</b> to confirm.'
+                ? "Please pay <b>" . self::money($a['due']) . "</b>$by to the account below, quoting <b>" . self::esc($b['ref']) . '</b>, then '
+                    . ($slipBox !== '' ? '<span class="no-print">send us the payment slip below, or </span>' : '') . 'call <b>' . self::esc($pay['phone']) . '</b> to confirm.'
                 : 'Please call <b>' . self::esc($pay['phone']) . "</b>$by to arrange the payment of <b>" . self::money($a['due']) . '</b>.';
             $release = $b['status'] === 'pending' && $b['holdUntil'] ? ' If the advance isn\'t received by then, the dates are released.' : '';
             $payBox = '<section class="doc__pay"><h3>How to pay</h3><p>' . $ask . $release . '</p>' . ($hasBank ? '<dl>' . $dl . '</dl>' : '')
@@ -255,6 +280,7 @@ final class Docs
             . '<div class="doc__totals">' . $totals . '</div>'
             . '<p class="doc__small">' . self::esc($note) . '</p>'
             . $payBox
+            . $slipBox
             . '<footer class="doc__foot">Thank you for choosing ' . self::esc($site['name']) . ' · ' . self::esc($site['phone']) . '</footer>'
             . ($cancelled ? '<div class="doc__void" aria-hidden="true">CANCELLED</div>' : '')
             . '</article>';
@@ -262,6 +288,35 @@ final class Docs
         $by = (string) ($b['createdBy'] ?? 'guest');
         $issuedBy = str_starts_with($by, 'admin:') ? Auth::nameOf(substr($by, 6)) : '';
         return self::page("$title {$b['ref']}", $body, $embed, $issuedBy);
+    }
+
+    /** One slip the guest sent, as the invoice lists it (docs.js writes the same after an upload). */
+    private static function slipItem(array $s): string
+    {
+        return '<li><b>Sent ' . self::esc(self::dateTime($s['uploadedAt'])) . '</b>' . ($s['amount'] ? ' · ' . self::money($s['amount']) : '')
+            . ($s['note'] !== '' ? ' · ' . self::esc($s['note']) : '')
+            . ' <span class="' . ($s['recorded'] ? 'is-ok">Payment recorded ✓' : 'is-wait">We are checking it') . '</span></li>';
+    }
+
+    /** "Paid already? Send us the payment slip": the slips sent so far and the upload form ($due: the amount to suggest). */
+    private static function slipBox(array $b, array $sent, int $due): string
+    {
+        $types = 'image/jpeg,image/png,image/webp,image/gif,application/pdf';
+        $cur = (string) (Site::info()['currency'] ?? 'LKR');
+        $then = $b['status'] === 'pending' ? 'confirm your booking' : 'record your payment';
+        return '<section class="doc__slip no-print" id="slip" data-slip-form data-url="' . self::esc('/api' . self::invoicePath($b) . '/slip') . '"'
+            . ' data-currency="' . self::esc($cur) . '">'
+            . '<h3>' . ($sent ? 'Your payment slips' : 'Paid already? Send us the payment slip') . '</h3>'
+            . '<p>Upload a photo or PDF of the bank slip or transfer receipt. We check it and ' . $then . ' — you don\'t need to call.</p>'
+            . '<ul class="doc__slips" data-slip-list>' . implode('', array_map([self::class, 'slipItem'], $sent)) . '</ul>'
+            . '<form class="doc__slip-form" data-slip-upload novalidate>'
+            . '<label class="doc__fld"><span>' . ($sent ? 'Another payment slip' : 'Payment slip') . '</span><input type="file" name="slip" accept="' . $types . '"></label>'
+            . '<div class="doc__fields">'
+            . '<label class="doc__fld"><span>Amount paid (' . self::esc($cur) . ') <small>optional</small></span><input type="number" name="amount" min="1" step="1" inputmode="numeric"' . ($due > 0 ? ' value="' . $due . '"' : '') . '></label>'
+            . '<label class="doc__fld"><span>Note <small>optional</small></span><input name="note" maxlength="255" placeholder="e.g. Paid from BOC, ref 4411"></label>'
+            . '</div>'
+            . '<div class="doc__slip-foot"><button class="doc-btn" type="submit">Send the slip</button><p class="doc__slip-msg" role="status" aria-live="polite" data-slip-msg></p></div>'
+            . '</form></section>';
     }
 
     // ---------- receipts ----------
@@ -288,7 +343,7 @@ final class Docs
         $site = Site::info();
         $b = Bookings::getBooking($p['bookingId']);
         $t = self::receiptTotals($p, $b);
-        $what = $b['kind'] === 'room' ? (string) $b['roomName'] : $b['packageLabel'];
+        $what = $b['kind'] === 'room' ? (string) ($b['place'] ?: $b['roomName']) : $b['packageLabel'];
         $rupees = $site['currency'] === 'LKR' ? ' rupees only' : ' only';
         $kv = [
             ['Received from', self::esc($b['guestName']) . ($b['guestIdNo'] !== '' ? ' <span class="sub-in">(NIC / passport ' . self::esc($b['guestIdNo']) . ')</span>' : '')],

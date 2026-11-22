@@ -594,7 +594,7 @@
     const room = b.kind === 'room';
     openModal(`${modalHead(`Check in ${b.guestName}`, `${b.ref} · ${placeOf(b)} · ${whenText(b)}`)}
       <form class="dr-body">
-        ${b.status === 'pending' ? '<div class="note note--warn">This booking is still pending. Checking in confirms it — make sure the advance is settled.</div>' : ''}
+        ${b.status === 'pending' ? `<div class="note note--warn">This booking is still pending. Checking in confirms it — ${b.advance && !b.advance.required ? 'it asks for no advance, so the guest pays everything here.' : 'make sure the advance is settled.'}</div>` : ''}
         ${room ? `<div class="note note--info"><b>${esc(b.roomName)}</b> — sleeps ${b.capacity}. Noting the guests is optional and doesn't change the price.</div>` : ''}
         ${b.specialRequests ? `<div class="note note--info"><b>Requests:</b> ${esc(b.specialRequests)}</div>` : ''}
         <label class="fld"><span>NIC / passport number <small>— check it against their ID</small></span><input name="guestIdNo" value="${esc(b.guestIdNo || '')}" maxlength="30" autocapitalize="characters" spellcheck="false" placeholder="e.g. 199012345678"></label>
@@ -609,6 +609,7 @@
           <label class="fld"><span>Amount (${esc(CUR)})</span><input type="number" name="amount" min="0" step="1"></label>
           <label class="fld"><span>Paid by</span><select name="method">${methodOptions('cash')}</select></label>
           ${S.payFieldsHtml(payFields(), { fee: false })}
+          ${S.slipFieldHtml()}
         </div>
         <div class="dlg-foot"><button type="button" class="abtn" data-mclose>Cancel</button><button class="abtn abtn--primary" type="submit">${icon('a-key', 16)}Check in</button></div>
       </form>`);
@@ -635,6 +636,9 @@
       const btn = $('[type="submit"]', form);
       btn.disabled = true;
       try {
+        const file = S.slipFile(form);
+        if (file && !body.advance) { form.amount.focus(); throw new Error('Enter the amount paid for this slip, or remove the slip.'); }
+        if (body.advance) body.advance.slip = await S.uploadSlip(file);
         const r = await api(`/pos/checkin/${b.id}`, { method: 'POST', body });
         closeModal();
         await loadBoard();
@@ -690,6 +694,7 @@
           <label class="fld"><span>Amount (${esc(CUR)})</span><input type="number" name="amount" min="0" step="1"></label>
           <label class="fld"><span>Paid by</span><select name="method">${methodOptions('cash')}</select></label>
           ${S.payFieldsHtml(payFields(), { fee: false })}
+          ${S.slipFieldHtml()}
         </div>
         <div class="dlg-foot"><button type="button" class="abtn" data-mclose>Cancel</button><button class="abtn abtn--primary" type="submit">${icon('a-key', 16)}Check in walk-in</button></div>
       </form>`, 'modal--wide');
@@ -815,6 +820,9 @@
       const btn = $('[type="submit"]', form);
       btn.disabled = true;
       try {
+        const file = S.slipFile(form);
+        if (file && !body.payment) { form.amount.focus(); throw new Error('Enter the amount paid for this slip, or remove the slip.'); }
+        if (body.payment) body.payment.slip = await S.uploadSlip(file);
         const r = await api('/pos/walkin', { method: 'POST', body });
         closeModal();
         await loadBoard();
@@ -898,16 +906,22 @@
           <label class="fld"><span>Paid by</span><select name="method">${methodOptions('cash')}</select></label>
           ${S.payFieldsHtml(payFields())}
           <label class="fld span2"><span>Note <small>(optional)</small></span><input name="note" maxlength="255" placeholder="e.g. Part payment"></label>
+          ${S.slipFieldHtml('Payment slip', { guestSlips: f.guestSlips, money })}
         </div>
         <div class="dlg-foot"><span class="src">Balance now ${money(f.totals.balance)}</span><button class="abtn abtn--primary" type="submit">${icon('a-cash', 16)}Record payment</button></div>
       </form>`);
     S.bindPayFields(modalPanel, $('[name="method"]', modalPanel));
+    S.bindSlipField(modalPanel, $('[name="amount"]', modalPanel));
     modalPanel.onsubmit = (e) => {
       e.preventDefault();
       const fm = e.target;
+      let file;
+      try { file = S.slipFile(fm); } catch (ex) { toast(ex.message, true); return; }
+      const guestSlip = S.guestSlipKey(fm); // a slip the guest sent from their invoice link
       const p = { amount: Math.round(Number(fm.amount.value)) || 0, method: fm.method.value, note: fm.note.value, ...S.readPayFields(fm, payFields()) };
       closeModal();
       run(async () => {
+        p.slip = file ? await S.uploadSlip(file) : guestSlip;
         const r = await api(`/pos/folios/${b.id}/payments`, { method: 'POST', body: p });
         setFolio(r.folio);
         changed(b.id);
@@ -969,7 +983,7 @@
     openModal(`${modalHead('History', `${f.booking.guestName} · ${f.booking.ref}`)}
       <div class="dr-body">
         ${f.log.length ? `<ul class="hist">${f.log.map((l) => `<li><span>${esc(l.detail)}</span><small>${fdt(l.at)} · ${esc(l.by)}${l.amount !== null ? ` · ${l.amount < 0 ? '− ' : ''}${money(Math.abs(l.amount))}` : ''}</small></li>`).join('')}</ul>` : '<div class="empty">Nothing yet.</div>'}
-        ${f.payments.filter((p) => !p.voided).length ? `<p class="section-title">Payments</p><ul class="hist">${f.payments.filter((p) => !p.voided).map((p) => `<li><span>${money(p.amount)} · ${esc(p.methodLabel)}${[...(p.details || []).map((d) => `${d.label}: ${d.value}`), p.note, p.fee ? `${money(p.fee)} kept by the agent or bank — ${money(p.net)} reached the account` : ''].filter(Boolean).map((s) => ` · ${esc(s)}`).join('')}</span><small>${esc(p.receiptNo)} · ${fdt(p.createdAt)} · ${esc(p.createdBy)} · <button type="button" class="linkbtn" data-receipt="${p.id}">receipt</button>${can('void') ? ` · <button type="button" class="linkbtn" data-void-pay="${p.id}">cancel this payment</button>` : ''}</small></li>`).join('')}</ul>` : ''}
+        ${f.payments.filter((p) => !p.voided).length ? `<p class="section-title">Payments</p><ul class="hist">${f.payments.filter((p) => !p.voided).map((p) => `<li><span>${money(p.amount)} · ${esc(p.methodLabel)}${[...(p.details || []).map((d) => `${d.label}: ${d.value}`), p.note, p.fee ? `${money(p.fee)} kept by the agent or bank — ${money(p.net)} reached the account` : ''].filter(Boolean).map((s) => ` · ${esc(s)}`).join('')}</span><small>${esc(p.receiptNo)} · ${fdt(p.createdAt)} · ${esc(p.createdBy)} · <button type="button" class="linkbtn" data-receipt="${p.id}">receipt</button>${p.slipUrl ? ` · ${S.slipLink(p)}` : ''}${can('void') ? ` · <button type="button" class="linkbtn" data-void-pay="${p.id}">cancel this payment</button>` : ''}</small></li>`).join('')}</ul>` : ''}
       </div>`, 'modal--wide');
     modalPanel.onclick = (e) => {
       const rc = e.target.closest('[data-receipt]');

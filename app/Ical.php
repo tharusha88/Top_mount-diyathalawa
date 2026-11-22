@@ -94,7 +94,7 @@ final class Ical
         $plural = fn (int $n, string $one, string $many) => $n . ' ' . ($n === 1 ? $one : $many);
         $block = $b['source'] === 'block';
         $guests = $b['adults'] + $b['children'];
-        $what = $b['kind'] === 'room' ? (string) ($b['roomName'] ?? 'Room') : $b['packageLabel'];
+        $what = $b['kind'] === 'room' ? (string) (($b['place'] ?? '') ?: ($b['roomName'] ?? 'Room')) : $b['packageLabel'];
 
         if ($block) {
             $summary = 'Blocked · ' . ($b['place'] !== '' ? $b['place'] : $what) . ($b['guestName'] !== 'Blocked' ? ' · ' . $b['guestName'] : '');

@@ -93,7 +93,7 @@ DB_DATABASE=u123456789_topmountain        from step 1
 DB_USERNAME=u123456789_topmountain        from step 1
 DB_PASSWORD=the-database-password      from step 1
 
-ADMIN_NOTIFY_EMAILS=owner@gmail.com    who gets new-booking emails
+ADMIN_NOTIFY_EMAILS=owner@gmail.com    who gets new-booking emails (change or add more later in Admin → Settings)
 SMTP_HOST=smtp.hostinger.com           see the table in step 3
 SMTP_PORT=465
 SMTP_SECURE=true
@@ -129,9 +129,12 @@ login, and that private files can't be downloaded. Fix anything red, then reload
   check the per-person prices, the hotel capacity and the room priority list.
 - **Email:** in hPanel → Emails, create the mailbox the site sends from (e.g. `bookings@yourdomain.lk`).
   Then in File Manager edit `.env`: put the address after `SMTP_USER=` and in `MAIL_FROM=`, and its
-  password after `SMTP_PASS=`. Test with **Settings → Send test**.
-- **WhatsApp alerts:** follow the steps in **Settings → WhatsApp alerts** (send one WhatsApp
-  message from the resort's phone (077 736 8264 unless changed) to CallMeBot, paste the key it replies with, press Save, then Send test).
+  password after `SMTP_PASS=`. In **Settings → Booking notifications**, add every address that
+  should hear about new bookings, press **Save emails**, then **Test** next to an address.
+- **WhatsApp alerts:** in **Settings → WhatsApp alerts**, add every phone that should get booking
+  alerts (the resort's 077 736 8264 is there to start with). Each phone sends one WhatsApp message to
+  CallMeBot and gets its own key: paste it next to that number, press Save, then Test. Tick whether
+  alerts go out when a guest books on the website, when a booking is confirmed, or both.
 - **Rooms:** set each room's real type, price per night and how many it sleeps in **Admin → Rooms**
   (the 20 rooms start with sample values: Rs 8,000 a night, sleeps 2).
 - **Website:** check the phone, WhatsApp, address and map pin in **Admin → Website**.

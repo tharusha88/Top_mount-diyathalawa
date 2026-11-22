@@ -15,6 +15,7 @@
 </head>
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="a-chat" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H10l-4.5 4v-4h0A1.5 1.5 0 0 1 4 14.5z"/><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8.5 9.5h7M8.5 12.5h4"/></symbol>
     <symbol id="a-home" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 10.5 12 4l8 6.5V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1z"/></symbol>
     <symbol id="a-cal" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 10h16M8 3v4M16 3v4"/></symbol>
     <symbol id="a-list" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></symbol>
@@ -44,6 +45,7 @@
     <symbol id="a-tag" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9zM7.5 8.5h.01"/></symbol>
     <symbol id="a-doc" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6"/></symbol>
     <symbol id="a-chart" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 20h16M7 16v-5M12 16V6M17 16v-8"/></symbol>
+    <symbol id="a-trash" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></symbol>
     <symbol id="a-user" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0"/></symbol>
   </svg>
 
@@ -78,7 +80,9 @@
         <a href="#/finance" data-nav-link="finance" data-perm="finance"><svg><use href="#a-chart"/></svg>Finance</a>
         <span class="side__sep" data-perm="site setup users">Setup</span>
         <a href="#/website" data-nav-link="website" data-perm="site"><svg><use href="#a-home"/></svg>Website</a>
+        <a href="#/chatbot" data-nav-link="chatbot" data-perm="site"><svg><use href="#a-chat"/></svg>Chatbot</a>
         <a href="#/setup" data-nav-link="setup" data-perm="setup"><svg><use href="#a-sliders"/></svg>Booking setup</a>
+        <a href="#/rates" data-nav-link="rates" data-perm="setup"><svg><use href="#a-tag"/></svg>Rate sheet</a>
         <a href="#/rooms" data-nav-link="rooms" data-perm="setup"><svg><use href="#a-bed"/></svg>Rooms</a>
         <a href="#/users" data-nav-link="users" data-perm="users"><svg><use href="#a-user"/></svg>Staff logins</a>
         <a href="#/settings" data-nav-link="settings"><svg><use href="#a-cog"/></svg>Settings</a>
@@ -128,7 +132,11 @@
   <script src="/js/admin-pos.js"></script>
   <script src="/js/admin-setup.js"></script>
   <script src="/js/admin-site.js"></script>
+  <script src="/js/data/content.js"></script><!-- the website's facts, for the chatbot's starter knowledge -->
+  <script src="/js/admin-chatbot.js"></script>
   <script src="/js/admin-coupons.js"></script>
+  <script src="/js/admin-rates.js"></script>
+  <script src="/js/admin-confirm.js"></script>
   <script src="/js/admin-users.js"></script>
   <script src="/js/admin-finance.js"></script>
   <script src="/js/admin.js"></script>

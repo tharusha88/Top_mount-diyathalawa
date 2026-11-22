@@ -53,6 +53,26 @@ body.doc-body.is-embed { background: #fff; }
 .doc__pay dt { color: var(--ink-3); }
 .doc__pay dd { margin: 0; font-weight: 700; }
 
+/* the guest's payment slip upload (on screen only) */
+.doc__slip { margin-top: 12px; padding: 12px 14px; border: 1.5px dashed var(--accent); border-radius: 8px; background: #f4f8ef; }
+.doc__slip h3 { margin: 0 0 4px; font: 600 1.05em Georgia, "Times New Roman", serif; }
+.doc__slip p { margin: 0 0 8px; }
+.doc__slips { margin: 0 0 10px; padding: 0; list-style: none; }
+.doc__slips li { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; margin-bottom: 4px; font-size: 0.92em; }
+.doc__slips .is-wait { color: #8a5a12; font-weight: 600; }
+.doc__slips .is-ok { color: var(--accent); font-weight: 700; }
+.doc__slip-form { display: grid; gap: 8px; }
+.doc__fields { display: grid; grid-template-columns: 1fr 1.6fr; gap: 8px; }
+.doc__fld { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-weight: 600; font-size: 0.9em; }
+.doc__fld small { color: var(--ink-3); font-weight: 400; }
+.doc__fld input { width: 100%; min-height: 38px; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font: inherit; font-weight: 400; }
+.doc__fld input[type="file"] { padding: 6px; cursor: pointer; }
+.doc__fld input:focus { outline: 2px solid rgba(47, 93, 51, 0.35); border-color: var(--accent); }
+.doc__slip-foot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.doc__slip-foot .doc-btn[disabled] { opacity: 0.6; cursor: wait; }
+.doc__slip-msg { margin: 0 !important; font-weight: 600; color: var(--accent); }
+.doc__slip-msg.is-bad { color: #b6431b; }
+
 .doc__amount { margin: 14px 0 10px; padding: 12px; border: 2px solid var(--ink); border-radius: 8px; text-align: center; }
 .doc__amount small { display: block; font-size: 0.72em; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); }
 .doc__amount b { display: block; font: 700 1.9em/1.2 Georgia, "Times New Roman", serif; }
@@ -92,6 +112,8 @@ body.doc-body.is-embed { background: #fff; }
   .doc__no, .doc__to > div:last-child { text-align: left; }
   .doc__kv { grid-template-columns: 1fr; gap: 2px; }
   .doc__kv dd { margin-bottom: 6px; }
+  .doc__fields { grid-template-columns: 1fr; }
+  .doc__fld input { min-height: 44px; font-size: 16px; } /* no zoom on iPhone */
 }
 
 @media print {

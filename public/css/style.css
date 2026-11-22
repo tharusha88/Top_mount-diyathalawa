@@ -828,59 +828,83 @@ figure > .pic, figure > .frame { height: 100%; }
 .bform__submit[disabled] { opacity: .7; cursor: progress; }
 
 /* ======================= FOOTER ======================= */
-/* compact: a short band; small labels keep a readable size */
-.foot { background: var(--ivory-deep); padding-top: clamp(26px, 2.8vw, 40px); }
-.foot__top { display: grid; gap: clamp(16px, 2vw, 22px); padding-bottom: clamp(18px, 2vw, 24px); border-bottom: 1px solid var(--line); }
-.foot__brand { display: grid; gap: 6px; justify-items: start; align-content: start; }
-.foot__name { color: var(--pine); }
-.foot__logo { height: clamp(40px, 3vw, 48px); }
-.foot__about { color: var(--ink-soft); max-width: 34em; font-size: .9rem; line-height: 1.55; }
-/* local time sits in the bottom bar, between the copyright and "Back to top" */
-.foot__time { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 2px 8px; color: var(--ink-soft); }
-.foot__time i { width: 6px; height: 6px; border-radius: 50%; background: var(--pine); box-shadow: 0 0 0 3px rgb(41 75 58 / .14); }
-.foot__time b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
-
-/* quick actions: call, message, directions */
-.foot__actions { border-top: 1px solid var(--line-strong); }
-.qa {
-  display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 12px;
-  min-height: 44px; padding: 5px 4px; border-bottom: 1px solid var(--line-strong); color: var(--ink);
-  transition: padding .6s var(--ease);
+/* A deep pine band, no taller than the light footer it replaced: the logo and one line
+   about the estate, the section links, the hotline set large with the booking button,
+   and the address. Each fact appears once; only the column labels are in capitals. */
+.foot {
+  --f-line: rgb(247 245 239 / .13);
+  --f-soft: rgb(247 245 239 / .74);
+  --f-mute: rgb(247 245 239 / .6);
+  color: var(--ivory);
+  background:
+    radial-gradient(55% 95% at 86% 0%, rgb(211 182 144 / .1), transparent 72%),
+    radial-gradient(45% 90% at 0% 100%, rgb(0 0 0 / .18), transparent 72%),
+    var(--pine-deep);
 }
-.qa__ico {
-  width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line-strong); color: var(--pine);
-  transition: background-color .4s var(--ease), color .4s var(--ease), border-color .4s var(--ease);
+.foot ::selection { background: var(--ivory); color: var(--pine-deep); }
+.foot a:focus-visible { outline: 2px solid var(--brass-light); outline-offset: 3px; border-radius: 2px; }
+.foot .btn:focus-visible { border-radius: 999px; }
+
+.foot__main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 28px; padding-block: 44px 32px; }
+.foot__brand { display: grid; gap: 14px; justify-items: start; align-content: start; }
+.foot__logo { height: 40px; }
+.foot__line {
+  max-width: 21em; color: var(--f-soft); text-wrap: balance;
+  font: italic 300 clamp(1.24rem, 1.12rem + .36vw, 1.42rem)/1.32 var(--serif);
 }
-.qa__ico svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.qa__txt { display: grid; gap: 1px; min-width: 0; }
-.qa__k { font: 600 .6rem/1.2 var(--sans); letter-spacing: .2em; text-transform: uppercase; color: var(--brass-ink); }
-.qa__v { font: 400 clamp(1.02rem, 1rem + .15vw, 1.1rem)/1.1 var(--serif); overflow-wrap: anywhere; }
-.qa > svg { color: var(--pine); width: 15px; height: 15px; }
-.qa:hover { padding-left: 10px; }
-.qa:hover .qa__ico { background: var(--pine); border-color: var(--pine); color: var(--ivory); }
-.qa:hover .i-arrow { transform: translateX(4px); }
-.qa:hover .i-ext { transform: translate(2px, -2px); }
 
-.foot__links { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; padding-block: clamp(16px, 1.6vw, 22px); font-size: .9rem; }
-.foot__col { display: grid; align-content: start; min-width: 0; }
-.foot__col h3 { font: 600 .62rem/1.3 var(--sans); letter-spacing: .22em; text-transform: uppercase; color: var(--brass-ink); margin-bottom: 4px; }
-.foot__col li a, .foot__col div > a { display: flex; align-items: center; min-height: 34px; color: var(--ink); transition: color .3s; }
-.foot__col li a:hover, .foot__col div > a:hover { color: var(--pine); }
-.foot__contact { grid-column: 1 / -1; }
-.foot__col address { color: var(--ink-soft); line-height: 1.5; margin-top: 4px; }
+.foot__col { display: grid; align-content: start; justify-items: start; min-width: 0; }
+.foot__col h3 { margin-bottom: 8px; font: 600 .64rem/1.3 var(--sans); letter-spacing: .24em; text-transform: uppercase; color: var(--brass-light); }
+.foot address { font-style: normal; color: var(--f-soft); font-size: .92rem; line-height: 1.6; text-wrap: balance; }
 
+/* text links: soft ivory, an underline draws in from the left on hover */
+.foot__nav a, .foot__phones a, .foot__wa, .foot__go, .foot__social a {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 44px; color: var(--f-soft);
+  background: linear-gradient(currentColor, currentColor) 0 calc(50% + .78em) / 0 1px no-repeat;
+  transition: color .3s, background-size .5s var(--ease);
+}
+.foot__nav a:hover, .foot__phones a:hover, .foot__wa:hover, .foot__go:hover, .foot__social a:hover { color: var(--ivory); background-size: 100% 1px; }
+.foot__nav ul { display: flex; flex-wrap: wrap; column-gap: 26px; }
+.foot__nav a { font-size: .95rem; }
+
+/* the hotline, large; any other number shares the small line below it with WhatsApp */
+.foot__reach { display: flex; flex-wrap: wrap; align-items: center; column-gap: 22px; }
+.foot__phones { display: contents; }
+.foot__phones a { font-size: .9rem; font-variant-numeric: tabular-nums; }
+.foot__phones a:first-child {
+  flex-basis: 100%; min-height: 0; margin-bottom: 2px; background: none; color: var(--ivory);
+  font: 300 clamp(1.9rem, 1.45rem + 1vw, 2.3rem)/1.12 var(--serif); letter-spacing: .01em; white-space: nowrap;
+}
+.foot__phones a:first-child:hover { color: var(--brass-light); }
+.foot__wa, .foot__go, .foot__social a { font: 600 .66rem/1 var(--sans); letter-spacing: .18em; text-transform: uppercase; color: var(--ivory); }
+.foot__wa .i-ext, .foot__go .i-ext, .foot__social .i-ext { width: 14px; height: 14px; color: var(--brass-light); }
+.foot__wa:hover .i-ext, .foot__go:hover .i-ext, .foot__social a:hover .i-ext { transform: translate(2px, -2px); }
+.foot__cta { width: 100%; margin-top: 16px; }
+.foot__social div { display: flex; flex-wrap: wrap; column-gap: 22px; }
+
+/* bottom bar: copyright and the time at the resort on the left, "Back to top" on the right */
 .foot__legal {
-  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 2px 24px;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "copy up" "time up";
+  align-items: center; column-gap: 16px; row-gap: 2px;
   /* no room is kept for the phone contact bar: it slides away while the footer is on screen */
-  padding: 6px 0 calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); font-size: .74rem; color: var(--ink-muted);
+  padding: 12px 0 calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--f-line);
+  font-size: .76rem; color: var(--f-mute);
 }
-.foot__up { display: inline-flex; align-items: center; gap: 10px; min-height: 34px; font: 600 .62rem/1 var(--sans); letter-spacing: .18em; text-transform: uppercase; color: var(--ink); }
+.foot__legal > p:first-child { grid-area: copy; }
+.foot__time { grid-area: time; display: inline-flex; align-items: center; gap: 8px; }
+.foot__time i { width: 6px; height: 6px; border-radius: 50%; background: var(--brass-light); animation: foot-pulse 2.8s var(--ease) infinite; }
+.foot__time b { font-weight: 600; color: var(--ivory); font-variant-numeric: tabular-nums; }
+@keyframes foot-pulse {
+  0% { box-shadow: 0 0 0 0 rgb(211 182 144 / .5); }
+  70%, 100% { box-shadow: 0 0 0 7px rgb(211 182 144 / 0); }
+}
+.foot__up { grid-area: up; display: inline-flex; align-items: center; gap: 12px; min-height: 44px; font: 600 .64rem/1 var(--sans); letter-spacing: .18em; text-transform: uppercase; color: var(--ivory); }
 .foot__up-ico {
-  width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line-strong);
+  width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; border: 1px solid rgb(247 245 239 / .3);
   transition: background-color .4s var(--ease), color .4s var(--ease), border-color .4s var(--ease), transform .5s var(--ease);
 }
 .foot__up-ico svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.foot__up:hover .foot__up-ico { background: var(--pine); border-color: var(--pine); color: var(--ivory); transform: translateY(-3px); }
+.foot__up:hover .foot__up-ico { background: var(--ivory); border-color: var(--ivory); color: var(--pine-deep); transform: translateY(-3px); }
 
 /* ======================= PHONE CONTACT BAR ======================= */
 /* Call now + WhatsApp, on phones and small tablets only (hidden from 900px up).
@@ -908,7 +932,9 @@ figure > .pic, figure > .frame { height: 100%; }
 }
 .mbar__btn:active { transform: scale(.97); filter: brightness(.94); }
 .mbar__btn--call { color: var(--ivory); background: linear-gradient(180deg, #36624C 0%, var(--pine) 55%, var(--pine-deep) 100%); }
-.mbar__btn--wa { color: #fff; background: linear-gradient(180deg, #14894A 0%, #0C7036 55%, #095E2D 100%); }
+/* Book now: the redesign's brass, with dark pine text (at least 5:1 contrast across the gradient) */
+.mbar__btn--book { color: var(--pine-deep); background: linear-gradient(180deg, #E2CAA8 0%, var(--brass-light) 55%, #C3A277 100%); }
+.mbar__btn--book .mbar__ico { background: rgb(30 58 44 / .1); box-shadow: inset 0 0 0 1px rgb(30 58 44 / .18); }
 .mbar__label { overflow: hidden; text-overflow: ellipsis; }
 .mbar__ico {
   position: relative; width: 34px; height: 34px; flex: none; border-radius: 50%; display: grid; place-items: center;
@@ -922,7 +948,7 @@ figure > .pic, figure > .frame { height: 100%; }
   transform: translateX(-110%);
 }
 .mbar.is-on .mbar__btn::before { transform: translateX(110%); transition: transform 1.3s var(--ease) .5s; }
-.mbar.is-on .mbar__btn--wa::before { transition-delay: .68s; }
+.mbar.is-on .mbar__btn--book::before { transition-delay: .68s; }
 /* and the phone icon rings a few times */
 .mbar__btn--call .mbar__ico::after { content: ''; position: absolute; inset: 0; border-radius: 50%; pointer-events: none; }
 .mbar.is-on .mbar__btn--call .mbar__ico::after { animation: mbar-ring 2.6s var(--ease) 1.4s 3; }
@@ -1020,7 +1046,7 @@ figure > .pic, figure > .frame { height: 100%; }
 
 /* single-column grids must be able to shrink below their content's min width (date inputs, figures) */
 .intro__grid, .book__grid, .loc__top, .near__head,
-.foot__top, .section-head, .exp__grid, .exp__head, .loc__head,
+.section-head, .exp__grid, .exp__head, .loc__head,
 .book__panel, .near__also, .discover__chapters, .reviews__inner { grid-template-columns: minmax(0, 1fr); }
 .book__panel > *, .bform, .bresult { min-width: 0; }
 
@@ -1032,8 +1058,14 @@ figure > .pic, figure > .frame { height: 100%; }
   .film__title em { display: inline; }
   .rcard { flex-basis: min(36vw, 300px); }
   .near__also ul { grid-template-columns: 1fr 1fr; column-gap: 40px; }
-  .foot__links { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .foot__contact { grid-column: auto; }
+  /* footer: the brand line across the top, then Explore, Reservations and Visit side by side */
+  .foot__main { grid-template-columns: minmax(0, .75fr) minmax(0, 1.25fr) minmax(0, 1fr); column-gap: clamp(24px, 4vw, 40px); }
+  .foot__brand { grid-column: 1 / -1; }
+  .foot__nav ul { display: grid; }
+  .foot__nav a, .foot__phones a, .foot__wa, .foot__go, .foot__social a { min-height: 34px; }
+  .foot__cta { width: auto; }
+  .foot__legal { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); grid-template-areas: "copy time up"; }
+  .foot__up { justify-self: end; }
 }
 
 /* ======================= ≥ 900px (desktop composition) ======================= */
@@ -1090,19 +1122,19 @@ figure > .pic, figure > .frame { height: 100%; }
   .book__panel { padding: clamp(80px, 9vw, 150px) clamp(40px, 7vw, 130px); }
 
   /* footer */
-  .foot__top { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); column-gap: clamp(48px, 9vw, 160px); align-items: end; }
-  /* Explore and Stays each run in two short columns of three; Contact (and Follow, when added) share the rest */
-  .foot__links { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.6fr); grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); column-gap: clamp(24px, 4vw, 64px); }
-  .foot__links ul { display: grid; grid-template-rows: repeat(3, auto); grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); column-gap: 20px; }
-  .foot__col li a, .foot__col div > a { min-height: 24px; }
-  /* both numbers share a line when there is room */
-  .foot__contact [data-contact="phones"] { display: flex; flex-wrap: wrap; column-gap: 18px; }
-  .foot__contact { grid-column: auto; }
-  .foot__legal { padding-bottom: 8px; }
-  .foot__up { min-height: 30px; }
-  .foot__up-ico { width: 26px; height: 26px; }
-  .qa { grid-template-columns: 30px minmax(0, 1fr) auto; min-height: 38px; padding-block: 3px; }
-  .qa__ico { width: 30px; height: 30px; }
+  /* one row of four: brand, Explore, Reservations, Visit (Reservations gets the most room
+     until 1100px, so the hotline and the button stay on one line) */
+  .foot__main {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, .6fr) minmax(0, 1.2fr) minmax(0, .95fr);
+    column-gap: clamp(28px, 3.6vw, 76px); padding-block: clamp(48px, 4.4vw, 64px) clamp(36px, 3.4vw, 50px);
+  }
+  .foot__brand { grid-column: auto; gap: 16px; }
+  .foot__logo { height: clamp(40px, 3.2vw, 46px); }
+  .foot__col h3 { margin-bottom: 10px; }
+  .foot__nav a, .foot__phones a, .foot__wa, .foot__go, .foot__social a { min-height: 28px; }
+  .foot__cta { min-height: 48px; }
+  .foot__legal { padding-block: 14px; }
+  .foot__up { min-height: 36px; }
 
   .mbar { display: none; }
 
@@ -1135,6 +1167,8 @@ figure > .pic, figure > .frame { height: 100%; }
   .xp-progress { display: none; }
   .xp--menu { grid-column: span 2; }
   .xp__menulist { display: grid; grid-template-columns: 1fr 1fr; column-gap: 32px; }
+
+  .foot__main { grid-template-columns: minmax(0, 1.45fr) minmax(0, .7fr) minmax(0, 1.1fr) minmax(0, 1fr); column-gap: clamp(28px, 4.2vw, 76px); }
 }
 
 @media (min-width: 1280px) {

@@ -15,6 +15,14 @@ booking page are served by PHP.
 - **Booking** (`/book`): live availability, room choice, guest details (name, NIC or passport,
   email, phone). No payment is taken online: the booking is **pending** until the advance is paid,
   and the guest is told how to pay and whom to call. Styled like the redesign.
+- **Advance (optional)**: in Admin → Booking setup → Advance payment, **Collect an advance before
+  arrival** switches it on or off, and the advance is a **% of the total** or a **fixed amount**
+  (0 = the whole total; never more than the total). Off: guests are told there is nothing to pay
+  before they arrive and they pay at the resort; bookings stay pending until staff confirm them and
+  are never released or sent payment reminders. Each booking can override it under **Edit booking
+  → Advance** (or on a new booking): as in Booking setup, no advance, or its own amount
+  (`bookings.advance_amount`: NULL / 0 / amount). Only a reservation that asks for an advance is
+  held and released.
 - **Several rooms, one booking**: a family or group can add up to 10 rooms to one booking (one
   reference, one advance, one invoice, one bill). Each room is priced per night; an agreed rate
   set in the admin panel is a night for all its rooms together. Staff add or change a booking's
@@ -23,7 +31,7 @@ booking page are served by PHP.
   them all in `booking_rooms`, like a per-person group.
 - **Admin panel** (`/admin/`): pending requests (Confirm / Decline), calendar, bookings list with
   CSV export, manual bookings (phone, WhatsApp, walk-in, Booking.com, Agoda…), closed days,
-  rooms, booking setup (per-person options, capacity, advance-payment details), coupons, bills,
+  rooms and the rate sheet (room categories and RO / BB / HB / FB prices), booking setup (per-person options, capacity, advance-payment details), coupons, bills,
   finance, staff logins, the contact details shown on the website, WhatsApp alerts and printing.
 - **POS** (`/pos`): check guests in, tap items onto their bill, take payments, check out and
   issue numbered bills (`INV-00001`). Works on a tablet or a phone.
@@ -37,6 +45,25 @@ booking page are served by PHP.
   when someone visits. In **Admin → Settings → Reminders** you can switch the automatic sending
   off, change the days (0 turns that kind off), see what is due, and press **Send now**. To remind
   one guest at any time, open their booking and press **Send reminder**.
+- **Booking confirmations**: staff fill in a booking (Admin → New booking: tick **Then send the guest
+  a link…**, or open any booking and press **Send booking confirmation**) and send the guest a private
+  link on WhatsApp, by email or copied. The guest's page (`/confirm/<ref>/<code>`) shows the stay and
+  the price, with the details staff entered filled in and anything still missing marked **Needed**
+  (NIC or passport, email, phone, name, as the website asks). The guest confirms; staff are emailed and
+  get a WhatsApp alert, and the guest gets the invoice (and how to pay a reservation). Confirming
+  doesn't change the booking's status: staff still confirm it once the advance is in. Booking lists
+  mark **Awaiting guest** / **Guest confirmed**. Once confirmed, the link can't change the booking
+  again. Code: `app/Confirmations.php` (its own `booking_confirms` table, made when first needed),
+  `views/confirm.html`, `js/confirm.js`, `js/admin-confirm.js`.
+- **Chatbot**: a chat window on the home and booking pages, answered by Top Mountain's own bot on
+  the Panora chatbot platform (`D:/Projects/Panora/Chatbot`), a "hotel" brand with hotel safety
+  rules. **Admin → Chatbot** makes the bot (it starts with what the website says: stays and
+  starting rates, rooms, facilities, food, things to do, places nearby, contact, check-in times,
+  how to book), edits its name, instructions and knowledge entries, has a **Try the bot** chat,
+  and switches the website's chat window on or off. The browser never talks to the chatbot: the
+  chat window calls `/api/chat` (rate-limited), and `app/Chatbot.php` calls the chatbot's bridge
+  with a shared secret. The conversation is kept in the visitor's browser for the visit only.
+  The same bot can later answer the resort's WhatsApp through a CRM.
 
 Booking references look like `TMR-7K3M9Q`. Double bookings are impossible: every booking is checked
 and saved inside a database transaction.
@@ -59,11 +86,27 @@ D:/xampp/php/php.exe -d extension=gd -S localhost:3100 -t public public/index.ph
   `ADMIN_USERNAME` / `ADMIN_PASSWORD` from `.env`; change the password later in Admin → Settings).
 - `php scripts/seed-demo.php` adds a few sample bookings so the admin panel and POS have something
   to show; `php scripts/seed-demo.php --clear` removes them.
+- `php tests/confirmations_test.php` runs the booking-confirmation link tests the same way.
 - `php tests/bookings_test.php` runs the booking and POS rule tests on a throwaway SQLite file
   (never the real database). The tests use their own fixed sample rooms (`tests/seed.php`).
 - `php public/check.php` runs the hosting check from the command line.
 
 The tables, the 20 rooms and the settings are created the first time the site opens.
+
+**The chatbot, locally** (optional): run the Panora chatbot on this machine and point the site at it.
+
+1. In `D:/Projects/Panora/Chatbot`: `venv\Scripts\python app.py` (it serves `http://127.0.0.1:5000`;
+   the first time, also run `venv\Scripts\python init_db.py` and `venv\Scripts\python migrations.py`).
+   Put a Google Gemini key after `GEMINI_API_KEY=` in its `.env` for real answers; without one the
+   chat window says it can't answer and offers the phone number and WhatsApp.
+2. In this site's `.env`: `CHATBOT_URL=http://127.0.0.1:5000`, `CHATBOT_SECRET=` the chatbot's
+   `CRM_BRIDGE_SHARED_SECRET`, `CHATBOT_TENANT=topmountain`.
+3. **Admin → Chatbot → Make the bot**, check its answers in **Try the bot**, then switch the chat
+   window on.
+
+Live, the chatbot runs on its own server (it is Python, not PHP). The site calls it from its server,
+so `CHATBOT_URL` must be reachable from the hosting (an `https://` address), and the bridge must only
+accept calls carrying the secret: put it behind HTTPS and, if you can, allow only the hosting's IP.
 
 ## Putting it online (shared hosting)
 
@@ -79,21 +122,29 @@ The zip is large (about 180 MB) because it carries the site's photos and videos.
 
 ## Before going live: sample values to replace
 
-- **Rooms** (Admin → Rooms): the 20 room names and photos come from the website, but each room's
-  **type, price per night and how many it sleeps are samples** (Room, Rs 8,000, sleeps 2). The
-  website doesn't say which room is which kind of stay. Set the real values. Give rooms the
-  type names used on the website (e.g. "Wooden Cabana") and the home page's "Accommodation" choice
-  will count only those rooms.
+- **Room rates** (Admin → Rate sheet): the resort's rate sheet is loaded — 25 rooms in 8 categories
+  (Wooden Cabana, White House, Standard Villa ×2, Mud House, Bungalow, Family Deluxe Villa, Luxury
+  Villa), each with its room type, guests and a price per night for each meal plan (RO room only,
+  BB bed & breakfast, HB half board, FB full board), plus the whole-villa prices. Guests choose the
+  meal plan when booking; a whole villa books every room of its category at one price. Edit it all
+  in the Rate sheet table (a price of 0 = that plan isn't offered). The home page shows it under
+  "Room rates". **Rooms 118, 119, 120 and Bungalow B2 / B3** were added from the sheet and borrow
+  the photos of a room like them (and the website's "Rose Bungalow" is now Bungalow B1): give
+  them their own photos in Admin → Rooms.
 - **Per-person options** (Admin → Booking setup): Full board, Half board, Bed & breakfast and Day
   out are seeded with sample prices and **hidden**. Show one once its real prices are in.
 - **Extras**: the party area and JBL speaker start at price 0, which hides them on the booking
   page. Set a price to offer one.
 - **Advance payment** (Admin → Booking setup): bank, account and % advance are empty until filled
-  in, so guests only see the number to call.
+  in, so guests only see the number to call (and, with the advance at 0, are asked for the whole
+  total). Set the % or a fixed amount, or switch the advance off if guests pay at the resort.
 - **Email**: the website lists no email address, so `RESORT_EMAIL` is empty and `MAIL_FROM` is a
   placeholder (`bookings@example.com`). Create the resort's mailbox and fill in the SMTP settings.
-- **WhatsApp alerts** go to the hotline (94777368264) once a CallMeBot key is set up in
-  Admin → Settings.
+- **Booking notifications** (Admin → Settings): every new website booking is emailed to each
+  admin address on the list there (until one is saved, `ADMIN_NOTIFY_EMAILS` from `.env`), and sent
+  by WhatsApp to each number on the WhatsApp alerts list, again when it is confirmed (each can be
+  switched off). Every WhatsApp number needs its own free CallMeBot key; the list starts with the
+  hotline (94777368264). Without a key, or without SMTP, messages wait in `data/outbox/`.
 - **POS menu** (Admin → POS menu): sample items and prices.
 - **Map pin**: `RESORT_MAP_COORDS` is empty, so the maps link searches for the resort by name.
 

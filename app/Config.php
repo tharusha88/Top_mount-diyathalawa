@@ -111,6 +111,12 @@ final class Config
                 'pass' => self::env('SMTP_PASS'),
                 'from' => self::env('MAIL_FROM', 'Top Mountain Resort <bookings@example.com>'),
             ],
+            // the website's chatbot on the Panora chatbot platform (Chatbot.php); empty URL or secret = off
+            'chatbot' => [
+                'url' => rtrim(self::env('CHATBOT_URL'), '/'),
+                'secret' => self::env('CHATBOT_SECRET'),
+                'tenant' => self::env('CHATBOT_TENANT', 'topmountain') ?: 'topmountain',
+            ],
             'site' => [
                 'name' => self::env('RESORT_NAME', 'Top Mountain Resort'),
                 'phone' => self::env('RESORT_PHONE', '+94 77 736 8264'),

@@ -1,0 +1,89 @@
+/* The website's chat window (chat.js). Self-contained, in the redesign's palette and type, so it looks
+   the same on the home page (style.css) and the booking page (booking-base.css). */
+.tchat {
+  --tc-ivory: #F7F5EF; --tc-ivory-deep: #EEEBE2; --tc-sage: #DDE5D8; --tc-pine: #294B3A; --tc-pine-deep: #1E3A2C;
+  --tc-brass: #B38B5D; --tc-ink: #292D28; --tc-soft: #565A53; --tc-line: rgb(41 45 40 / .14);
+  --tc-sans: 'Manrope', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --tc-serif: 'Cormorant Garamond', 'Cormorant', Georgia, serif;
+  --tc-bottom: calc(22px + env(safe-area-inset-bottom));
+  font: 400 15px/1.5 var(--tc-sans); color: var(--tc-ink);
+}
+.tchat .sr-only { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.tchat svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+/* the bubble */
+.tchat__btn {
+  position: fixed; right: 22px; bottom: var(--tc-bottom); z-index: 52;
+  display: inline-flex; align-items: center; gap: 10px; min-height: 56px; padding: 0 20px 0 17px;
+  border: 0; border-radius: 999px; background: var(--tc-pine); color: var(--tc-ivory); cursor: pointer;
+  font: 600 .74rem/1 var(--tc-sans); letter-spacing: .14em; text-transform: uppercase;
+  box-shadow: 0 18px 40px -16px rgb(18 28 22 / .7), inset 0 1px 0 rgb(255 255 255 / .14);
+  transition: transform .4s cubic-bezier(.22, 1, .36, 1), background-color .3s, bottom .6s cubic-bezier(.22, 1, .36, 1);
+}
+.tchat__btn:hover { background: var(--tc-pine-deep); transform: translateY(-2px); }
+.tchat__btn:focus-visible { outline: 2px solid var(--tc-brass); outline-offset: 3px; }
+.tchat.is-open .tchat__btn { transform: scale(.9); opacity: 0; pointer-events: none; }
+
+/* the panel */
+.tchat__panel {
+  position: fixed; right: 22px; bottom: var(--tc-bottom); z-index: 53;
+  width: min(380px, calc(100vw - 24px)); height: min(560px, calc(100vh - 110px)); height: min(560px, calc(100dvh - 110px));
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--tc-ivory); border-radius: 18px;
+  box-shadow: 0 0 0 1px rgb(41 45 40 / .08), 0 40px 80px -30px rgb(18 28 22 / .55);
+  animation: tchat-in .35s cubic-bezier(.22, 1, .36, 1);
+}
+.tchat__panel[hidden] { display: none; }
+@keyframes tchat-in { from { opacity: 0; transform: translateY(14px) scale(.98); } to { opacity: 1; transform: none; } }
+.tchat__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 14px 14px 18px; background: var(--tc-pine); color: var(--tc-ivory); }
+.tchat__head b { display: block; font: 500 1.3rem/1.15 var(--tc-serif); }
+.tchat__head small { display: block; margin-top: 2px; font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: rgb(247 245 239 / .72); }
+.tchat__close { width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 50%; background: rgb(247 245 239 / .1); color: inherit; cursor: pointer; }
+.tchat__close:hover { background: rgb(247 245 239 / .2); }
+
+.tchat__log { flex: 1; overflow-y: auto; padding: 16px 14px 8px; display: flex; flex-direction: column; gap: 8px; overscroll-behavior: contain; }
+.tchat__msg { max-width: 86%; padding: 10px 13px; border-radius: 16px; font-size: .92rem; line-height: 1.5; overflow-wrap: anywhere; }
+.tchat__msg--bot { align-self: flex-start; background: #fff; border: 1px solid var(--tc-line); border-bottom-left-radius: 5px; }
+.tchat__msg--me { align-self: flex-end; background: var(--tc-pine); color: var(--tc-ivory); border-bottom-right-radius: 5px; }
+.tchat__msg.is-error { background: #fbf1e6; border-color: rgb(154 59 34 / .2); }
+.tchat__msg a { color: var(--tc-pine); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.tchat__msg--me a { color: inherit; }
+.tchat__msg.is-typing { display: inline-flex; gap: 4px; padding: 13px 14px; }
+.tchat__msg.is-typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--tc-soft); opacity: .4; animation: tchat-dot 1.2s infinite; }
+.tchat__msg.is-typing i:nth-child(2) { animation-delay: .15s; }
+.tchat__msg.is-typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes tchat-dot { 30% { opacity: 1; transform: translateY(-3px); } }
+
+.tchat__suggest { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px; }
+.tchat__suggest:empty { display: none; }
+.tchat__suggest button { border: 1px solid rgb(41 45 40 / .2); background: transparent; color: var(--tc-ink); border-radius: 999px; padding: 7px 12px; font: 500 .8rem/1.2 var(--tc-sans); cursor: pointer; }
+.tchat__suggest button:hover { background: var(--tc-sage); border-color: var(--tc-sage); }
+
+.tchat__form { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--tc-line); background: #fff; }
+.tchat__form input[name="message"] { flex: 1; min-width: 0; border: 1px solid rgb(41 45 40 / .2); border-radius: 999px; padding: 11px 16px; font: 400 .95rem/1.2 var(--tc-sans); color: var(--tc-ink); background: var(--tc-ivory); }
+.tchat__form input[name="message"]:focus { outline: none; border-color: var(--tc-pine); box-shadow: 0 0 0 3px rgb(41 75 58 / .14); }
+.tchat__form button { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; background: var(--tc-pine); color: var(--tc-ivory); cursor: pointer; }
+.tchat__form button:hover { background: var(--tc-pine-deep); }
+.tchat__hp { position: absolute; left: -9999px; width: 1px; height: 1px; opacity: 0; }
+.tchat__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 8px 14px 12px; background: #fff; font-size: .76rem; color: var(--tc-soft); }
+.tchat__foot span { margin-right: auto; }
+.tchat__foot a { color: var(--tc-pine); font-weight: 600; }
+
+/* phones: clear of the call / WhatsApp bar on the home page and the rooms bar on the booking page */
+@media (max-width: 899px) {
+  body:has(.mbar.is-on) .tchat { --tc-bottom: calc(88px + env(safe-area-inset-bottom)); }
+  .tchat__btn { right: 14px; min-height: 52px; padding: 0 16px 0 14px; }
+  .tchat__btnlabel { display: none; }
+  .tchat__btn { width: 52px; padding: 0; justify-content: center; }
+  .tchat__panel { right: 12px; left: 12px; width: auto; }
+}
+@media (max-width: 720px) {
+  .book-page .tchat { --tc-bottom: calc(110px + env(safe-area-inset-bottom)); }
+}
+.menu-open .tchat { display: none; } /* the full-screen menu on the home page */
+
+@media (prefers-reduced-motion: reduce) {
+  .tchat__panel, .tchat__msg.is-typing i { animation: none; }
+  .tchat__btn { transition: none; }
+}
+@media print { .tchat { display: none; } }

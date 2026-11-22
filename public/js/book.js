@@ -6,6 +6,9 @@
   window.YD.boot();
 
   const ROOMS = BOOT.rooms || [];
+  // the rate sheet: room categories (some can be booked whole, at one price) and the meal plans
+  const CATS = BOOT.categories || [];
+  const PLANS = BOOT.mealPlans && BOOT.mealPlans.length ? BOOT.mealPlans : [{ code: 'RO', name: 'Room only', includes: 'No meals' }];
   const LABELS = BOOT.labels || { room: 'Select room', person: 'Per person' };
   const OPTIONS = BOOT.packages || []; // per-person options on sale
   const PRICES = BOOT.prices || { partyArea: 0, jblSpeaker: 0 };
@@ -35,6 +38,8 @@
     children: Math.min(MAX.children, Math.max(0, parseInt(params.get('children'), 10) || 0)),
     // the rooms chosen: one booking can hold several (?room=slug or ?room=slug,slug)
     rooms: [...new Set((params.get('room') || '').split(',').filter(Boolean))].map((slug) => ROOMS.find((r) => r.slug === slug)).filter(Boolean),
+    plan: PLANS.some((p) => p.code === params.get('plan')) ? params.get('plan') : PLANS[0].code, // RO, BB, HB or FB
+    whole: CATS.find((c) => c.whole && String(c.id) === params.get('whole')) || null, // a category taken whole
     partyArea: false,
     jblSpeaker: false,
     party: null, // party-area status for the chosen nights: { free, taken }
@@ -49,13 +54,48 @@
   const MAX_ROOMS = 10; // Bookings::MAX_ROOMS
   const isPicked = (slug) => state.rooms.some((r) => r.slug === slug);
   const roomsCap = () => state.rooms.reduce((sum, r) => sum + r.capacity, 0);
+  // ---------- meal plans and whole categories (the rate sheet) ----------
+  const planOf = (code) => PLANS.find((p) => p.code === code) || PLANS[0];
+  /** a room's price a night with a meal plan (0 = not offered with it) */
+  const pp = (r, plan = state.plan) => (r.prices ? Number(r.prices[plan]) || 0 : plan === 'RO' ? r.price : 0);
+  const wholePrice = (c, plan = state.plan) => (c && c.whole ? Number(c.whole.prices[plan]) || 0 : 0);
+  const wholeName = (c) => `${c.name} — ${c.whole.label}`;
+  const catRooms = (c) => ROOMS.filter((r) => r.categoryId === c.id);
+  const inWhole = (r) => !!state.whole && r.categoryId === state.whole.id;
+  /** the chosen rooms' price a night: a whole category at its one price, the other rooms at theirs */
+  const perNight = () => wholePrice(state.whole) + state.rooms.filter((r) => !inWhole(r)).reduce((sum, r) => sum + pp(r), 0);
+  /** a whole category stays chosen only while every room of it is */
+  const checkWhole = () => { if (state.whole && !catRooms(state.whole).every((r) => isPicked(r.slug))) state.whole = null; };
+  if (state.whole) state.rooms = [...new Map([...catRooms(state.whole), ...state.rooms].map((r) => [r.slug, r])).values()];
   // the group size given on the home page (room bookings ask no guest numbers here): a hint only
   const groupSize = params.has('adults') ? state.adults + state.children : 0;
   if (isDay()) state.checkOut = null;
   if (state.checkIn && state.checkIn < BOOT.today) state.checkIn = state.checkOut = null;
   if (state.checkOut && state.checkOut <= state.checkIn) state.checkIn = state.checkOut = null;
+  // "Book now" on the home page (?go=rooms): straight to the rooms, for tonight until the guest picks dates
+  let datesDefaulted = false;
+  if (params.get('go') === 'rooms' && !state.checkIn && !isPerson()) {
+    state.checkIn = BOOT.today;
+    state.checkOut = window.RangeCalendar.addDays(BOOT.today, 1);
+    datesDefaulted = true;
+  }
 
   const alertBox = $('[data-alert]');
+  /** after "Book now": the rooms shown are tonight's — say so, with a way to the dates */
+  function datesHint() {
+    alertBox.innerHTML = `Showing rooms for tonight, ${esc(fmtDate(state.checkIn, { weekday: 'long', day: 'numeric', month: 'long' }))}. Staying other nights? <button type="button" class="linkish" data-jump-dates>Choose your dates</button>`;
+    alertBox.classList.add('is-info');
+    alertBox.hidden = false;
+  }
+  const clearDatesHint = () => { datesDefaulted = false; if (alertBox.querySelector('[data-jump-dates]')) alertBox.hidden = true; };
+  alertBox.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-jump-dates]')) return;
+    // the dates calendar moves up, under the heading, so the rooms below update as dates are picked
+    $('[data-panel="2"] .bk-panel__head').after(datebox);
+    datebox.open = true;
+    setupCal2();
+    datebox.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
   const showAlert = (msg, info = false) => {
     if (!msg) { alertBox.hidden = true; return; }
     alertBox.textContent = msg; alertBox.hidden = false; alertBox.classList.toggle('is-info', info);
@@ -67,6 +107,8 @@
     p.set('kind', state.kind);
     if (isPerson() && state.pkg) p.set('package', state.pkg.id);
     if (!isPerson() && state.rooms.length) p.set('room', state.rooms.map((r) => r.slug).join(','));
+    if (!isPerson() && state.plan !== PLANS[0].code) p.set('plan', state.plan);
+    if (!isPerson() && state.whole) p.set('whole', state.whole.id);
     if (state.checkIn) p.set('checkIn', state.checkIn);
     if (state.checkOut && !isDay()) p.set('checkOut', state.checkOut);
     if (isPerson()) { p.set('adults', state.adults); if (state.children) p.set('children', state.children); }
@@ -124,7 +166,9 @@
     } else {
       const n = state.checkIn && state.checkOut ? countNights(state.checkIn, state.checkOut) : 0;
       if (!state.rooms.length || !n) return null;
-      state.rooms.forEach((r) => lines.push([r.name, `${money(r.price)} × ${plural(n, 'night')}`, r.price * n, true]));
+      const plan = ` · ${planOf(state.plan).name}`;
+      if (state.whole) { const w = wholePrice(state.whole); lines.push([wholeName(state.whole) + plan, `${money(w)} × ${plural(n, 'night')}`, w * n, true]); }
+      state.rooms.filter((r) => !inWhole(r)).forEach((r) => lines.push([r.name + plan, `${money(pp(r))} × ${plural(n, 'night')}`, pp(r) * n, true]));
       [units, per] = [n, plural(n, 'night')];
     }
     if (state.partyArea && !isDay()) lines.push(['Party area', `${money(PRICES.partyArea)} × ${per}`, PRICES.partyArea * units, false]);
@@ -144,13 +188,16 @@
     gridPaint();
     const r = isPerson() ? null : state.rooms[0] || null;
     $('[data-sum-eyebrow]').textContent = isDay() ? 'Your visit' : 'Your stay';
-    $('[data-sum-room]').textContent = isPerson() ? (state.pkg ? state.pkg.name : LABELS.person) : state.rooms.length > 1 ? `${state.rooms.length} rooms` : r ? r.name : 'Choose a room';
+    const others = state.rooms.filter((x) => !inWhole(x)).length;
+    $('[data-sum-room]').textContent = isPerson() ? (state.pkg ? state.pkg.name : LABELS.person)
+      : state.whole ? `${wholeName(state.whole)}${others ? ` + ${plural(others, 'room')}` : ''}`
+        : state.rooms.length > 1 ? `${state.rooms.length} rooms` : r ? r.name : 'Choose a room';
     const img = isDay() ? DAY_IMAGE : isPerson() ? PERSON_IMAGE : r ? r.images[0] : '';
     if ((media.dataset.key || '') !== img) {
       media.dataset.key = img;
       media.innerHTML = img ? imgTag(img, { sizes: '360px', alt: r ? r.name : '', eager: true }) : placeholder;
     }
-    $('[data-sum-pkg]').textContent = isPerson() ? `${LABELS.person}${state.pkg ? ` · ${state.pkg.name}` : ''}` : LABELS.room;
+    $('[data-sum-pkg]').textContent = isPerson() ? `${LABELS.person}${state.pkg ? ` · ${state.pkg.name}` : ''}` : `${LABELS.room} · ${planOf(state.plan).name}`;
     $('[data-sum-in-label]').textContent = isDay() ? 'Date' : 'Check-in';
     $('[data-sum-in]').textContent = state.checkIn ? fmtDate(state.checkIn, long) : '—';
     $('[data-sum-out-row]').hidden = isDay();
@@ -166,7 +213,8 @@
         + (q.off ? `<div class="sum__line sum__line--off"><span>Coupon ${esc(state.coupon.code)}<small>${esc(state.coupon.label)}</small></span><span>− ${money(q.off)}</span></div>` : '');
       $('[data-sum-total]').textContent = money(q.total);
     }
-    const meals = isPerson() && state.pkg ? [state.pkg.description, isDay() ? '' : 'Rooms prepared for your group'].filter(Boolean).join(' · ') : '';
+    const meals = isPerson() ? (state.pkg ? [state.pkg.description, isDay() ? '' : 'Rooms prepared for your group'].filter(Boolean).join(' · ') : '')
+      : state.plan !== 'RO' ? `${planOf(state.plan).name}: ${planOf(state.plan).includes.toLowerCase()}, every day of your stay` : '';
     $('[data-sum-meals]').hidden = !meals;
     $('[data-sum-meals] span').textContent = meals;
     $('[data-sum-times]').hidden = isDay();
@@ -186,7 +234,7 @@
       <span class="kind__sub">${esc(sub)}</span>
       <span class="kind__price">${price}</span>
     </label>`;
-    kindsBox.innerHTML = card('room', LABELS.room, `Choose one room, or several for a family or group. Priced per room, per night${caps.length ? ` · sleeps ${Math.min(...caps)}–${Math.max(...caps)}` : ''}.`,
+    kindsBox.innerHTML = card('room', LABELS.room, `One room, several, or a whole villa — room only, with breakfast, half board or full board. Priced per room, per night${caps.length ? ` · sleeps ${Math.min(...caps)}–${Math.max(...caps)}` : ''}.`,
       `<small>from</small> ${money(roomFrom)}<span class="kind__unit">per room, per night</span>`, !ROOMS.length)
       + card('per_person', LABELS.person, `${OPTIONS.map((o) => o.name).join(', ') || 'Per-person options'}. Priced per guest; we prepare rooms for your group.`,
         OPTIONS.length ? `<small>from</small> ${money(personFrom)}<span class="kind__unit">per adult</span>` : 'Not available', !OPTIONS.length);
@@ -201,6 +249,39 @@
       <span class="pkg__price">${money(o.priceAdult)}<span class="pkg__unit">per adult${o.kind === 'day' ? '' : ', per night'}</span>${o.priceChild !== o.priceAdult ? `<span class="pkg__unit">${money(o.priceChild)} per child</span>` : ''}</span>
     </label>`).join('');
   }
+  /** The meal plan picker (step 1 and above the room list): RO, BB, HB, FB, each from its lowest room price. */
+  function renderPlans() {
+    $$('[data-plans]').forEach((box, i) => {
+      const wrap = box.closest('[data-plans-box]') || box;
+      wrap.hidden = isPerson();
+      if (wrap.hidden) return;
+      box.innerHTML = PLANS.map((p) => {
+        const from = minOf(ROOMS.map((r) => pp(r, p.code)).filter((v) => v > 0));
+        return `<label class="plan${from ? '' : ' is-off'}">
+          <input type="radio" name="plan${i}" value="${esc(p.code)}" ${state.plan === p.code ? 'checked' : ''} ${from ? '' : 'disabled'}>
+          <span class="plan__code">${esc(p.code)}</span>
+          <span class="plan__name">${esc(p.name)}</span>
+          <span class="plan__sub">${esc(p.includes)}</span>
+          <span class="plan__price">${from ? `<small>from</small> ${money(from)}` : 'Not offered'}</span>
+        </label>`;
+      }).join('');
+    });
+  }
+  function setPlan(code) {
+    if (code === state.plan) return;
+    state.plan = code;
+    // rooms (or a whole villa) without a price for this plan can't stay in the booking
+    const off = state.rooms.filter((r) => !inWhole(r) && !pp(r));
+    const wholeOff = state.whole && !wholePrice(state.whole) ? state.whole : null;
+    if (wholeOff) { state.rooms = state.rooms.filter((r) => r.categoryId !== wholeOff.id); state.whole = null; }
+    if (off.length) state.rooms = state.rooms.filter((r) => !off.includes(r));
+    const gone = [...(wholeOff ? [wholeName(wholeOff)] : []), ...off.map((r) => r.name)];
+    showAlert(gone.length ? `${gone.join(', ')} ${gone.length === 1 ? 'has' : 'have'} no ${planOf(code).name.toLowerCase()} rate, so ${gone.length === 1 ? 'it was' : 'they were'} taken out of your booking.` : '', true);
+    renderPlans();
+    if (state.results && state.step === 2) renderRooms();
+    renderSummary(); syncUrl();
+  }
+  document.addEventListener('change', (e) => { if (e.target.closest('[data-plans]') && e.target.checked) setPlan(e.target.value); });
   kindsBox.addEventListener('change', (e) => { if (e.target.name === 'kind') setKind(e.target.value); });
   optsBox.addEventListener('change', (e) => { if (e.target.name === 'option') setOption(OPTIONS.find((o) => String(o.id) === e.target.value)); });
 
@@ -213,7 +294,7 @@
     }
     $('[data-guests]').hidden = !isPerson();
     if (gridLive) gridShow();
-    renderOptions(); loadCalendar(); updateStep1(); renderSummary(); syncUrl();
+    renderOptions(); renderPlans(); loadCalendar(); updateStep1(); renderSummary(); syncUrl();
   }
   function setKind(kind) {
     const wasDay = isDay();
@@ -242,6 +323,7 @@
     onChange: ({ checkIn, checkOut }) => {
       state.checkIn = checkIn; state.checkOut = isDay() ? null : checkOut;
       state.results = null; state.party = null;
+      clearDatesHint();
       updateStep1(); renderSummary(); syncUrl();
     },
   });
@@ -285,7 +367,7 @@
     }
   }
   roomNote.addEventListener('click', (e) => {
-    if (e.target.closest('[data-any-room]')) { state.rooms = []; loadCalendar(); renderSummary(); syncUrl(); }
+    if (e.target.closest('[data-any-room]')) { state.rooms = []; state.whole = null; loadCalendar(); renderSummary(); syncUrl(); }
   });
   $('[data-clear-dates]').addEventListener('click', () => cal.clear());
 
@@ -361,6 +443,7 @@
     if (!room) return;
     if (!isPicked(room.slug) && state.rooms.length >= MAX_ROOMS) { showAlert(`A booking can have up to ${MAX_ROOMS} rooms — please contact us for more.`); return; }
     state.rooms = isPicked(room.slug) ? state.rooms.filter((x) => x.slug !== room.slug) : [...state.rooms, room];
+    checkWhole();
     state.results = null;
     loadCalendar(); renderSummary(); syncUrl();
   });
@@ -437,6 +520,7 @@
         months: monthsFor2(), minDate: BOOT.today, checkIn: state.checkIn, checkOut: state.checkOut,
         onChange: async ({ checkIn, checkOut }) => {
           if (!checkIn || !checkOut) return; // wait for both dates
+          clearDatesHint();
           state.checkIn = checkIn; state.checkOut = checkOut;
           state.results = null; state.party = null;
           cal.setRange(checkIn, checkOut);
@@ -472,16 +556,23 @@
     const gone = state.rooms.filter((x) => { const r = list.find((y) => y.slug === x.slug); return !r || !r.available; });
     if (gone.length) {
       state.rooms = state.rooms.filter((x) => !gone.includes(x));
+      checkWhole();
       showAlert(`${gone.map((x) => x.name).join(', ')} ${gone.length === 1 ? 'is' : 'are'} booked on some of those nights — but other rooms are free.`, true);
       renderSummary(); syncUrl();
     }
-    $('[data-room-list]').innerHTML = list.map((r) => {
-      const status = r.available ? '<span class="pill pill--ok">Available</span>' : `<span class="pill pill--no">${r.free ? 'Fully booked' : 'Booked'}</span>`;
+    renderPlans();
+    const planName = planOf(state.plan).name;
+    const card = (r) => {
+      const price = pp(r);
+      const whole = inWhole(r);
+      const status = !r.available ? `<span class="pill pill--no">${r.free ? 'Fully booked' : 'Booked'}</span>`
+        : whole ? '<span class="pill pill--ok">In your whole villa</span>' : price ? '<span class="pill pill--ok">Available</span>' : `<span class="pill pill--no">No ${esc(planName.toLowerCase())}</span>`;
       const on = isPicked(r.slug);
-      return `<article class="bk-room${r.available ? '' : ' is-off'}${on ? ' is-selected' : ''}">
+      const can = r.available && price && !whole;
+      return `<article class="bk-room${r.available && (price || whole) ? '' : ' is-off'}${on ? ' is-selected' : ''}">
         <div class="bk-room__img">${imgTag(r.images[0], { sizes: '190px', alt: r.name })}</div>
         <div>
-          <span class="bk-room__type">${esc(r.type)}</span>
+          <span class="bk-room__type">${esc(r.label || r.type)}</span>
           <h3>${esc(r.name)}</h3>
           <p>${esc(r.tagline)}</p>
           <ul class="room__specs">
@@ -491,11 +582,36 @@
         </div>
         <div class="bk-room__side">
           ${status}
-          <div class="price"><b>${money(r.total)}</b><small>${money(r.price)} × ${plural(n, 'night')}</small></div>
-          ${r.available ? `<button class="btn btn--sm ${on ? 'btn--ghost' : 'btn--amber'}" type="button" data-pick="${esc(r.slug)}" aria-pressed="${on}"${on ? ' title="Remove this room"' : ''}>${on ? '✓ Added' : 'Add room'}</button>` : ''}
+          ${price ? `<div class="price"><b>${money(price * n)}</b><small>${money(price)} × ${plural(n, 'night')} · ${esc(planName)}</small></div>` : ''}
+          ${can ? `<button class="btn btn--sm ${on ? 'btn--ghost' : 'btn--amber'}" type="button" data-pick="${esc(r.slug)}" aria-pressed="${on}"${on ? ' title="Remove this room"' : ''}>${on ? '✓ Added' : 'Add room'}</button>` : ''}
         </div>
       </article>`;
-    }).join('');
+    };
+    /** a category's "whole villa" card: every room of it, at one price — only when all of them are free */
+    const wholeCard = (c) => {
+      const mine = list.filter((r) => r.categoryId === c.id);
+      const free = mine.length === catRooms(c).length && mine.every((r) => r.available);
+      const price = wholePrice(c);
+      const on = state.whole && state.whole.id === c.id;
+      const note = !free ? 'Some of its rooms are booked on these nights' : !price ? `No ${planName.toLowerCase()} rate` : `${plural(mine.length, 'room')} · sleeps ${c.whole.capacity || mine.reduce((s, r) => s + r.capacity, 0)}`;
+      return `<article class="bk-whole${free && price ? '' : ' is-off'}${on ? ' is-selected' : ''}">
+        <div><span class="bk-room__type">${esc(c.whole.code || 'Whole')}</span><h3>${esc(wholeName(c))}</h3><p>${esc(note)}</p></div>
+        <div class="bk-room__side">
+          ${price ? `<div class="price"><b>${money(price * n)}</b><small>${money(price)} × ${plural(n, 'night')} · ${esc(planName)}</small></div>` : ''}
+          ${free && price ? `<button class="btn btn--sm ${on ? 'btn--ghost' : 'btn--amber'}" type="button" data-whole="${c.id}" aria-pressed="${!!on}">${on ? '✓ Booked whole' : `Book the ${esc(c.whole.label.toLowerCase())}`}</button>` : ''}
+        </div>
+      </article>`;
+    };
+    // the rate sheet's order: each category with its rooms (and its whole option), then any others
+    const groups = CATS.map((c) => ({ c, rooms: list.filter((r) => r.categoryId === c.id) })).filter((g) => g.rooms.length);
+    const loose = list.filter((r) => !groups.some((g) => g.c.id === r.categoryId));
+    const byFree = (a, b) => Number(b.available) - Number(a.available);
+    $('[data-room-list]').innerHTML = groups.map(({ c, rooms }) => `<section class="bk-cat" aria-label="${esc(c.name)}">
+        <h3 class="bk-cat__title">${esc(c.name)}</h3>
+        ${c.whole ? wholeCard(c) : ''}
+        ${rooms.slice().sort(byFree).map(card).join('')}
+      </section>`).join('')
+      + (loose.length ? `<section class="bk-cat">${groups.length ? '<h3 class="bk-cat__title">Other rooms</h3>' : ''}${loose.sort(byFree).map(card).join('')}</section>` : '');
     renderPickBar();
   }
   /** The chosen rooms, what they sleep and cost, and the way on. */
@@ -507,18 +623,36 @@
     const n = countNights(state.checkIn, state.checkOut);
     const cap = roomsCap();
     const short = groupSize > cap;
-    $('[data-pick-count]').textContent = k === 1 ? state.rooms[0].name : `${k} rooms · ${state.rooms.map((r) => r.name).join(', ')}`;
-    $('[data-pick-detail]').textContent = `Sleeps ${cap} · ${money(state.rooms.reduce((sum, r) => sum + r.price * n, 0))} for ${plural(n, 'night')}`
+    const others = state.rooms.filter((r) => !inWhole(r));
+    $('[data-pick-count]').textContent = state.whole ? `${wholeName(state.whole)}${others.length ? ` + ${others.map((r) => r.name).join(', ')}` : ''}`
+      : k === 1 ? state.rooms[0].name : `${k} rooms · ${state.rooms.map((r) => r.name).join(', ')}`;
+    $('[data-pick-detail]').textContent = `Sleeps ${cap} · ${planOf(state.plan).name} · ${money(perNight() * n)} for ${plural(n, 'night')}`
       + (short ? ` · your group is ${groupSize}: add another room` : '');
     bar.classList.toggle('is-short', short);
   }
   $('[data-room-list]').addEventListener('click', (e) => {
+    const wb = e.target.closest('[data-whole]');
+    if (wb) { // a whole category: all its rooms, or none of them
+      const c = CATS.find((x) => String(x.id) === wb.dataset.whole);
+      if (!c) return;
+      const on = state.whole && state.whole.id === c.id;
+      const rest = state.rooms.filter((r) => r.categoryId !== c.id);
+      if (!on && rest.length + catRooms(c).length > MAX_ROOMS) { showAlert(`A booking can have up to ${MAX_ROOMS} rooms — please contact us for more.`); return; }
+      state.rooms = on ? rest : [...catRooms(c), ...rest];
+      state.whole = on ? null : c;
+      showAlert('');
+      renderRooms(); renderSummary(); syncUrl();
+      const again = $(`[data-whole="${c.id}"]`);
+      if (again) again.focus({ preventScroll: true });
+      return;
+    }
     const b = e.target.closest('[data-pick]');
     if (!b) return;
     const room = ROOMS.find((r) => r.slug === b.dataset.pick);
     if (!room) return;
     if (!isPicked(room.slug) && state.rooms.length >= MAX_ROOMS) { showAlert(`A booking can have up to ${MAX_ROOMS} rooms — please contact us for more.`); return; }
     state.rooms = isPicked(room.slug) ? state.rooms.filter((x) => x.slug !== room.slug) : [...state.rooms, room];
+    checkWhole();
     showAlert('');
     renderRooms(); renderSummary(); syncUrl();
     const again = $(`[data-pick="${room.slug}"]`);
@@ -587,6 +721,7 @@
     check(f.guestIdNo, /^[A-Z0-9][A-Z0-9 \-/]{3,39}$/.test(idNo) && (idNo.match(/[A-Z0-9]/g) || []).length >= 5, 'Please enter your NIC or passport number.');
     check(f.guestEmail, /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.guestEmail.value.trim()), 'Please enter a valid email.');
     check(f.guestPhone, f.guestPhone.value.replace(/\D/g, '').length >= 7, 'Please enter a phone number we can reach you on.');
+    if (f.slip) check(f.slip, slipFile() !== false, 'The slip must be a photo (JPG, PNG, WebP) or a PDF, up to 10 MB.');
     check(f.agree, f.agree.checked, '');
     if (first) first.focus();
     return !first;
@@ -604,7 +739,11 @@
     couponMsg.textContent = 'Checking…';
     const p = new URLSearchParams({ code, kind: isDay() ? 'day_out' : state.kind, checkIn: state.checkIn || '' });
     if (!isDay() && state.checkOut) p.set('checkOut', state.checkOut);
-    if (isPerson()) { p.set('packageId', state.pkg ? state.pkg.id : ''); p.set('adults', state.adults); p.set('children', state.children); } else if (state.rooms.length) p.set('rooms', state.rooms.map((r) => r.slug).join(','));
+    if (isPerson()) { p.set('packageId', state.pkg ? state.pkg.id : ''); p.set('adults', state.adults); p.set('children', state.children); } else {
+      if (state.rooms.length) p.set('rooms', state.rooms.map((r) => r.slug).join(','));
+      p.set('mealPlan', state.plan);
+      if (state.whole) p.set('wholeCategory', state.whole.id);
+    }
     try {
       const res = await fetch(`/api/coupon?${p}`);
       const data = await res.json().catch(() => ({}));
@@ -622,6 +761,35 @@
       return false;
     }
   }
+  // ---------- advance payment slip: optional, sent right after the booking is made ----------
+  const SLIP_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'];
+  const slipField = $('[data-slip-field]');
+  if (slipField && PAY.advanceOn) {
+    slipField.hidden = false;
+    const payTo = $('[data-slip-pay]', slipField);
+    if (payTo && PAY.accountNo) {
+      payTo.innerHTML = `Pay to <b>${esc(PAY.bank || 'the bank')}</b> · ${PAY.accountName ? `${esc(PAY.accountName)} · ` : ''}account <b>${esc(PAY.accountNo)}</b>${PAY.branch ? ` · ${esc(PAY.branch)} branch` : ''}`;
+      payTo.hidden = false;
+    }
+  }
+  /** The slip chosen: a File, null for none, or false when it is the wrong kind of file or too large. */
+  const slipFile = () => {
+    const input = form.elements.slip;
+    const file = slipField && !slipField.hidden && input && input.files && input.files[0];
+    if (!file) return null;
+    return SLIP_TYPES.includes(file.type) && file.size <= 10 * 1024 * 1024 ? file : false;
+  };
+  /** Send the slip to the booking just made (the invoice link's address); never throws. */
+  async function sendSlip(file, b) {
+    try {
+      const res = await fetch(`/api${new URL(b.invoiceUrl, location.href).pathname}/slip`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': file.type }, body: file });
+      const data = await res.json().catch(() => ({}));
+      return res.ok ? { ok: true } : { ok: false, error: data.error || `It didn't upload (${res.status}).` };
+    } catch {
+      return { ok: false, error: 'It didn\'t upload — the connection dropped.' };
+    }
+  }
+
   $('[data-coupon-apply]').addEventListener('click', applyCoupon);
   form.elements.couponCode.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); applyCoupon(); } });
   form.elements.couponCode.addEventListener('input', () => {
@@ -643,6 +811,8 @@
       kind: isDay() ? 'day_out' : state.kind,
       packageId: isPerson() && state.pkg ? state.pkg.id : undefined,
       rooms: isPerson() ? undefined : state.rooms.map((r) => r.slug), // one booking, every room chosen
+      mealPlan: isPerson() ? undefined : state.plan, // RO, BB, HB or FB
+      wholeCategory: !isPerson() && state.whole ? state.whole.id : undefined, // a whole villa, at its one price
       checkIn: state.checkIn, checkOut: isDay() ? undefined : state.checkOut,
       adults: isPerson() ? state.adults : undefined, children: isPerson() ? state.children : undefined,
       partyArea: !isDay() && state.partyArea, jblSpeaker: state.jblSpeaker,
@@ -680,6 +850,8 @@
         throw new Error(data.error || 'Something went wrong — please try again.');
       }
       state.booking = data.booking;
+      const slip = slipFile();
+      state.slipSent = slip ? await sendSlip(slip, data.booking) : null; // the booking is made either way
       done();
     } catch (err) {
       showAlert(err.message);
@@ -692,22 +864,36 @@
   const tel = (s) => String(s || '').replace(/[^\d+]/g, '');
   function payHtml(b) {
     const hasBank = !!PAY.accountNo;
+    const adv = b.advance || { required: true, amount: 0, full: true, pct: null };
+    const phone = `<a href="tel:${esc(tel(PAY.phone))}"><b>${esc(PAY.phone || site.phone || '')}</b></a>`;
+    const wa = String(PAY.whatsapp || site.whatsapp || '').replace(/\D/g, '');
+    const actions = `<div class="bk-pay__actions">
+        <a class="btn btn--sm" href="tel:${esc(tel(PAY.phone))}">Call ${esc(PAY.phone || '')}</a>
+        ${wa ? `<a class="btn btn--sm btn--ghost" href="https://wa.me/${wa}?text=${encodeURIComponent(`Hello Top Mountain Resort! My booking reference is ${b.ref}.`)}" target="_blank" rel="noopener">WhatsApp us</a>` : ''}
+      </div>`;
+    // no advance: nothing to pay now, it is all paid at the resort
+    if (!adv.required) {
+      return `<p>There is <b>nothing to pay now</b>: you pay at the resort. We will call you to confirm your booking — for any questions, call us on ${phone}.</p>
+      <dl class="bk-paylist">${[['Total, paid at the resort', `<b>${money(b.totalAmount)}</b>`], ['Booking reference', `<b>${esc(b.ref)}</b>`]].map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+      ${PAY.note ? `<p class="bk-pay__note">${esc(PAY.note)}</p>` : ''}
+      ${actions}`;
+    }
+    const part = !adv.full && adv.amount > 0; // an advance smaller than the total
     const rows = [
-      b.advanceDue ? ['Advance', `<b>${money(b.advanceDue)}</b> <small>(${PAY.advancePct}% of ${money(b.totalAmount)})</small>`] : null,
+      part ? ['Advance', `<b>${money(adv.amount)}</b> <small>(${adv.pct !== null ? `${adv.pct}% of ` : 'of '}${money(b.totalAmount)})</small>`] : ['Amount to pay', `<b>${money(b.totalAmount)}</b>`],
       hasBank && PAY.bank ? ['Bank', esc(PAY.bank)] : null,
       hasBank && PAY.accountName ? ['Account name', esc(PAY.accountName)] : null,
       hasBank ? ['Account number', `<b class="bk-pay__no">${esc(PAY.accountNo)}</b> <button type="button" class="linkish" data-copy="${esc(PAY.accountNo)}">Copy</button>`] : null,
       hasBank && PAY.branch ? ['Branch', esc(PAY.branch)] : null,
       ['Payment reference', `<b>${esc(b.ref)}</b>`],
     ].filter(Boolean);
-    const wa = String(PAY.whatsapp || site.whatsapp || '').replace(/\D/g, '');
-    return `<p>${hasBank ? 'To confirm it, please pay the advance to the account below and call us on' : 'To confirm it, please call us on'} <a href="tel:${esc(tel(PAY.phone))}"><b>${esc(PAY.phone || site.phone || '')}</b></a>${hasBank ? '' : ' to arrange the advance payment'}. We confirm your booking as soon as the advance is received.</p>
+    const what = part ? 'the advance' : 'the payment';
+    // once paid, the guest uploads the slip on their invoice (Docs::slipBox) instead of calling
+    const slip = hasBank && b.invoiceUrl ? `${b.invoiceUrl}#slip` : '';
+    return `<p>${hasBank ? `To confirm it, please pay ${what} to the account below, then ${slip ? `<a href="${esc(slip)}" target="_blank" rel="noopener"><b>upload the payment slip</b></a> or ` : ''}call us on` : 'To confirm it, please call us on'} ${phone}${hasBank ? '' : ` to arrange ${what}`}. We confirm your booking as soon as ${what} is received.</p>
       <dl class="bk-paylist">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
       ${PAY.note ? `<p class="bk-pay__note">${esc(PAY.note)}</p>` : ''}
-      <div class="bk-pay__actions">
-        <a class="btn btn--sm" href="tel:${esc(tel(PAY.phone))}">Call ${esc(PAY.phone || '')}</a>
-        ${wa ? `<a class="btn btn--sm btn--ghost" href="https://wa.me/${wa}?text=${encodeURIComponent(`Hello Top Mountain Resort! My booking reference is ${b.ref}.`)}" target="_blank" rel="noopener">WhatsApp us</a>` : ''}
-      </div>`;
+      ${slip ? actions.replace('<div class="bk-pay__actions">', `<div class="bk-pay__actions"><a class="btn btn--sm btn--amber" href="${esc(slip)}" target="_blank" rel="noopener">Upload payment slip</a>`) : actions}`;
   }
   const modal = $('[data-pay-modal]');
   const closeModal = () => { modal.hidden = true; };
@@ -728,16 +914,24 @@
     $('[data-done-text]').innerHTML = day
       ? `Your request for a <b>${esc(b.packageLabel.toLowerCase())}</b> on <b>${fmtDate(b.checkIn, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</b> for ${plural(b.adults + b.children, 'guest')} is with us, and a copy is on its way to ${esc(b.guestEmail)}.`
       : b.kind === 'room'
-        ? `Your request for <b>${esc(b.roomName)}</b> ${range} is with us, and a copy is on its way to ${esc(b.guestEmail)}.`
+        ? `Your request for <b>${esc(b.place || b.roomName)}</b> ${range} is with us, and a copy is on its way to ${esc(b.guestEmail)}.`
         : `Your request for <b>${esc(b.packageLabel.toLowerCase())}</b> for ${plural(b.adults + b.children, 'guest')} ${range} is with us, and a copy is on its way to ${esc(b.guestEmail)}.`;
     $('[data-done-ref]').textContent = b.ref;
     const inv = $('[data-done-invoice]');
     if (inv && b.invoiceUrl) { inv.href = b.invoiceUrl; inv.hidden = false; }
+    const slipDone = $('[data-done-slip]');
+    if (slipDone) {
+      const s = state.slipSent;
+      slipDone.hidden = !s;
+      slipDone.classList.toggle('is-bad', !!s && !s.ok);
+      if (s) slipDone.innerHTML = s.ok ? '✓ We received your advance payment slip. We will check it and confirm your booking.'
+        : `Your booking is in, but the payment slip didn't upload: ${esc(s.error)} <a href="${esc(`${b.invoiceUrl}#slip`)}" target="_blank" rel="noopener">Send it from your invoice</a>.`;
+    }
     $('[data-done-pay]').innerHTML = payHtml(b);
     $('[data-pay-body]').innerHTML = payHtml(b);
     modal.hidden = false;
     setTimeout(() => { const btn = $('.bk-modal__card .btn', modal); if (btn) btn.focus(); }, 50);
-    const what = day ? `a ${b.packageLabel.toLowerCase()} on ${b.checkIn}` : b.kind === 'room' ? `${b.roomName} (${b.checkIn} to ${b.checkOut})` : `${b.packageLabel.toLowerCase()} for ${b.adults + b.children} (${b.checkIn} to ${b.checkOut})`;
+    const what = day ? `a ${b.packageLabel.toLowerCase()} on ${b.checkIn}` : b.kind === 'room' ? `${b.place || b.roomName} (${b.checkIn} to ${b.checkOut})` : `${b.packageLabel.toLowerCase()} for ${b.adults + b.children} (${b.checkIn} to ${b.checkOut})`;
     $('[data-done-wa]').href = `https://wa.me/${String(site.whatsapp || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Hello Top Mountain Resort! I just booked ${what}. My booking reference is ${b.ref}.`)}`;
     history.replaceState(null, '', '/book?done=1');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -768,9 +962,10 @@
   $('[data-guests]').hidden = !isPerson();
   renderKinds();
   renderOptions();
+  renderPlans();
   loadCalendar();
   updateStep1();
   renderSummary();
-  if (datesReady() && !isPerson()) findRooms();
+  if (datesReady() && !isPerson()) findRooms().then(() => { if (datesDefaulted && alertBox.hidden && state.step === 2) datesHint(); });
   else go(1);
 })();

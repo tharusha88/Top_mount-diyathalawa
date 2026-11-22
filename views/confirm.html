@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Confirm your booking — {{site.name}}</title>
+  <meta name="theme-color" content="#F7F5EF">
+  <link rel="icon" href="/assets/icons/favicon.ico" sizes="48x48">
+  <link rel="icon" href="/assets/icons/icon-192.png" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/booking-base.css">
+  <link rel="stylesheet" href="/css/book.css">
+  <link rel="stylesheet" href="/css/confirm.css">
+</head>
+<!-- A booking staff made, sent to the guest to check, complete and confirm (app/Confirmations.php, js/confirm.js) -->
+<body class="book-page confirm-page is-loaded">
+  <a class="skip" href="#main">Skip to content</a>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-leaf" viewBox="0 0 24 24"><path fill="currentColor" d="M20.6 3.4c-6.8-.6-12.1 1.2-14.6 5.2-1.7 2.7-1.6 5.8-.4 8.2L3 19.4l1.4 1.4 2.6-2.6c2.4 1.2 5.5 1.3 8.2-.4 4-2.5 5.8-7.8 5.4-14.4zM8.5 15.5c1.6-3.2 4.2-5.8 7.5-7.6-2.6 2.4-4.6 5-6 8l-1.5-.4z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M5 12h14m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-wa" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.6 0-3.1-.4-4.4-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.8-1.4.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5c-.2 0-.4.1-.7.3-.2.3-.9.9-.9 2.2s.9 2.5 1.1 2.7c.1.2 1.8 2.8 4.4 3.9 1.6.7 2.3.8 3.1.6.5-.1 1.5-.6 1.7-1.2.2-.6.2-1.1.2-1.2-.1-.1-.3-.2-.5-.3z"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 13h6M9 17h6"/></symbol>
+  </svg>
+
+  <header class="nav is-scrolled" data-nav>
+    <a class="nav__logo" href="/" aria-label="{{site.name}}, home"><span class="logo" aria-hidden="true"></span></a>
+    <div class="nav__actions">
+      <a class="btn btn--ghost btn--sm" href="/" aria-label="Back to the resort"><svg width="16" height="16"><use href="#i-left"/></svg> Back<span class="nav__more">&nbsp;to the resort</span></a>
+    </div>
+  </header>
+
+  <section class="bk-hero" data-bg="cabana-hillside">
+    <div class="container">
+      <p class="eyebrow eyebrow--light" data-cf-eyebrow>Your booking</p>
+      <h1>Confirm your <em>booking</em></h1>
+    </div>
+  </section>
+
+  <main id="main" class="container bk">
+    <div class="bk__main">
+      <div class="bk-alert" data-alert role="alert" hidden></div>
+
+      <!-- the guest checks the booking, fills in what is missing and confirms -->
+      <section class="bk-panel" data-panel="open" hidden>
+        <header class="bk-panel__head">
+          <h2>Please check your booking</h2>
+          <p data-cf-intro></p>
+        </header>
+        <form class="bk-form" data-form novalidate>
+          <div class="field" data-f="guestName">
+            <label for="f-name">Full name</label>
+            <input id="f-name" name="guestName" autocomplete="name" required maxlength="120" placeholder="e.g. Nimal Perera">
+          </div>
+          <div class="field" data-f="guestIdNo">
+            <label for="f-idno">NIC / passport number</label>
+            <input id="f-idno" name="guestIdNo" required maxlength="30" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. 199012345678 or N1234567">
+          </div>
+          <div class="field" data-f="guestEmail">
+            <label for="f-email">Email</label>
+            <input id="f-email" name="guestEmail" type="email" autocomplete="email" required maxlength="160" placeholder="you@example.com">
+          </div>
+          <div class="field" data-f="guestPhone">
+            <label for="f-phone">Phone / WhatsApp</label>
+            <input id="f-phone" name="guestPhone" type="tel" autocomplete="tel" required maxlength="40" placeholder="+94 77 123 4567">
+          </div>
+          <div class="field" data-f="country">
+            <label for="f-country">Country <small>(optional)</small></label>
+            <input id="f-country" name="country" autocomplete="country-name" maxlength="60" placeholder="Sri Lanka" list="countries">
+            <datalist id="countries"><option>Sri Lanka</option><option>India</option><option>United Kingdom</option><option>Germany</option><option>France</option><option>Australia</option><option>United States</option><option>Netherlands</option><option>Maldives</option><option>China</option><option>Russia</option><option>Japan</option></datalist>
+          </div>
+          <div class="field" data-f="arrivalTime">
+            <label for="f-arrival">Estimated arrival <small>(optional)</small></label>
+            <select id="f-arrival" name="arrivalTime">
+              <option value="">Not sure yet</option>
+              <option>Morning (before 12 PM)</option>
+              <option>12 PM – 3 PM</option>
+              <option>3 PM – 6 PM</option>
+              <option>After 6 PM</option>
+            </select>
+          </div>
+          <div class="field field--full" data-f="specialRequests">
+            <label for="f-req">Special requests <small>(optional)</small></label>
+            <textarea id="f-req" name="specialRequests" rows="3" maxlength="1500" placeholder="Anything we should know? Dietary needs, celebrations, transport…"></textarea>
+          </div>
+          <div class="hp" aria-hidden="true"><label>Website <input name="website" tabindex="-1" autocomplete="off"></label></div>
+          <label class="check field--full">
+            <input type="checkbox" name="agree" required>
+            <span data-cf-agree>I have checked the booking and the details are correct.</span>
+          </label>
+          <div class="bk-actions field--full">
+            <a class="btn btn--ghost" data-cf-wa target="_blank" rel="noopener"><svg width="16" height="16"><use href="#i-wa"/></svg> Something's not right?</a>
+            <button class="btn btn--amber" type="submit" data-submit>Confirm my booking <svg class="arrow" width="18" height="18"><use href="#i-arrow"/></svg></button>
+          </div>
+        </form>
+      </section>
+
+      <!-- confirmed by the guest (now, or earlier) -->
+      <section class="bk-panel bk-done" data-panel="confirmed" hidden>
+        <div class="bk-done__mark" aria-hidden="true">
+          <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="54" fill="none" stroke="currentColor" stroke-width="2"/><path d="M38 62l15 15 30-34" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <h2 data-done-title>Thank you!</h2>
+        <p class="lead" data-done-text></p>
+        <div class="bk-ref">Booking reference <b data-done-ref></b></div>
+        <div class="bk-pay" data-done-pay></div>
+        <div class="bk-actions bk-actions--center">
+          <a class="btn" data-done-invoice target="_blank" rel="noopener"><svg width="18" height="18"><use href="#i-doc"/></svg> View your invoice</a>
+          <a class="btn btn--ghost" data-done-wa target="_blank" rel="noopener"><svg width="18" height="18"><use href="#i-wa"/></svg> Message us on WhatsApp</a>
+          <a class="btn btn--amber" href="/">Visit Top Mountain</a>
+        </div>
+      </section>
+
+      <!-- cancelled, or the stay has begun: nothing to confirm -->
+      <section class="bk-panel bk-done" data-panel="closed" hidden>
+        <h2 data-closed-title>This booking can't be confirmed here</h2>
+        <p class="lead" data-closed-text></p>
+        <div class="bk-actions bk-actions--center">
+          <a class="btn" href="tel:{{site.phoneHref}}">Call {{site.phone}}</a>
+          <a class="btn btn--ghost" href="https://wa.me/{{site.whatsapp}}" target="_blank" rel="noopener"><svg width="18" height="18"><use href="#i-wa"/></svg> WhatsApp us</a>
+        </div>
+      </section>
+
+      <!-- the cancellation policy (Admin → Booking setup) -->
+      <div data-cf-policy></div>
+    </div>
+
+    <aside class="bk__summary" aria-label="Your booking">
+      <div class="sum">
+        <div class="sum__media" data-sum-media><div class="sum__ph"><svg width="40" height="40" style="color:var(--leaf-400)"><use href="#i-leaf"/></svg></div></div>
+        <div class="sum__body">
+          <p class="eyebrow" data-sum-eyebrow>Your stay</p>
+          <h3 data-sum-room></h3>
+          <dl class="sum__dl" data-sum-dl></dl>
+          <div class="sum__price">
+            <div data-sum-lines></div>
+            <div class="sum__total"><span>Total</span><b data-sum-total></b></div>
+            <div class="cf-due" data-sum-due hidden></div>
+            <p class="sum__note" data-sum-service hidden></p>
+          </div>
+          <ul class="sum__perks">
+            <li data-sum-times><svg width="16" height="16"><use href="#i-check"/></svg>Check-in from {{site.checkIn}} · out by {{site.checkOut}}</li>
+          </ul>
+        </div>
+      </div>
+      <p class="sum__help">Questions? Call <a href="tel:{{site.phoneHref}}">{{site.phone}}</a> or <a href="https://wa.me/{{site.whatsapp}}" target="_blank" rel="noopener">WhatsApp us</a>.</p>
+    </aside>
+  </main>
+
+  <footer class="bk-foot container">© {{year}} {{site.name}} · {{site.address}}<span class="bk-foot__credit">{{site.poweredBy}}</span></footer>
+
+  {{boot}}
+  <script src="/js/common.js"></script>
+  <script src="/js/confirm.js"></script>
+</body>
+</html>

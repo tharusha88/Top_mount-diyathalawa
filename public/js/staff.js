@@ -129,6 +129,74 @@ window.YDStaff = (function () {
     });
   }
 
+  // ---------- payment slips: a photo or PDF of the bank slip, kept with the payment (staff only) ----------
+  const SLIP_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf'];
+  const SLIP_MAX = 10 * 1024 * 1024; // as Pos::SLIP_LIMIT
+  const slipUploads = new WeakMap(); // File → its saved name, so sending the form again after an error doesn't upload it twice
+
+  /**
+   * The optional slip fields for a payment form: the slips the guest sent from their invoice link
+   * that are not on a payment yet (guestSlips, from the folio or the booking) to choose from, and a
+   * file staff can upload instead. money(n) formats the guest's amounts.
+   */
+  function slipFieldHtml(label = 'Payment slip', { guestSlips = [], money = null } = {}) {
+    const open = (guestSlips || []).filter((s) => !s.paymentId);
+    const when = (iso) => { try { return new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }); } catch { return iso; } };
+    const pick = open.length ? `<div class="fld span2"><span>Slip the guest sent <small>(from their invoice link)</small></span>
+      <div class="slip-pick"><select name="guestSlip" data-guest-slip aria-label="Slip the guest sent">${open.map((s) => `<option value="${esc(s.key)}" data-url="${esc(s.url)}" data-amount="${s.amount || ''}">${esc([`Sent ${when(s.uploadedAt)}`, s.amount ? (money ? money(s.amount) : s.amount) : '', s.note].filter(Boolean).join(' · '))}</option>`).join('')}
+        <option value="">None — upload one below instead</option></select>
+        <a class="abtn" href="${esc(open[0].url)}" target="_blank" rel="noopener" data-guest-slip-open title="Open the guest's slip">${icon('a-ext', 15)}Open</a></div></div>` : '';
+    return `${pick}<label class="fld span2"><span>${esc(open.length ? 'Or upload a slip' : label)} <small>(optional — photo or PDF of the bank slip)</small></span><input type="file" name="slip" accept="${SLIP_TYPES.join(',')}" data-slip></label>`;
+  }
+
+  /** Keep the "Open" link on the chosen guest slip, and fill an empty amount with what the guest said they paid. */
+  function bindSlipField(root, amountEl) {
+    const sel = root && root.querySelector('select[data-guest-slip]');
+    if (!sel) return;
+    const link = root.querySelector('[data-guest-slip-open]');
+    const sync = () => {
+      const o = sel.selectedOptions[0];
+      if (link) { link.hidden = !o || !o.value; if (o && o.dataset.url) link.href = o.dataset.url; }
+      if (amountEl && !amountEl.value && o && o.dataset.amount) amountEl.value = o.dataset.amount;
+    };
+    sel.addEventListener('change', sync);
+    sync();
+  }
+
+  /** The guest slip chosen in a form ('' = none). */
+  const guestSlipKey = (root) => { const sel = root && root.querySelector('select[data-guest-slip]'); return sel ? sel.value : ''; };
+
+  /** The payment's 'slip' from a form: an uploaded file wins over the guest's slip. */
+  async function formSlip(root) {
+    const file = slipFile(root);
+    return file ? uploadSlip(file) : guestSlipKey(root);
+  }
+
+  /** The slip chosen in a form, checked; null = none. Throws if it is the wrong kind of file or too large. */
+  function slipFile(root) {
+    const el = root && root.querySelector('input[data-slip]');
+    const file = el && el.files && el.files[0];
+    if (!file) return null;
+    if (!SLIP_TYPES.includes(file.type)) throw new Error('The slip must be a photo (JPG, PNG, WebP) or a PDF.');
+    if (file.size > SLIP_MAX) throw new Error('The slip is too large. Up to 10 MB.');
+    return file;
+  }
+
+  /** Upload a slip (from slipFile) before its payment is sent; gives the name for the payment's 'slip' ('' = none). */
+  async function uploadSlip(file) {
+    if (!file) return '';
+    if (slipUploads.has(file)) return slipUploads.get(file);
+    const res = await fetch('/api/admin/pos/slips', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': file.type }, body: file });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Could not upload the slip (${res.status})`);
+    slipUploads.set(file, data.slip);
+    return data.slip;
+  }
+
+  /** "Slip" link that opens a payment's slip in a new tab ('' when it has none). button: the small button look. */
+  const slipLink = (p, button = false) => (p && p.slipUrl
+    ? `<a class="${button ? 'abtn abtn--sm' : 'linkbtn'}" href="${esc(p.slipUrl)}" target="_blank" rel="noopener" title="Open the payment slip">${button ? `${icon('a-ext', 15)}Slip` : 'slip'}</a>` : '');
+
   // ---------- rates agreed with the guest ----------
   const RATE_NAMES = { room: 'rateRoom', adult: 'rateAdult', child: 'rateChild' };
 
@@ -388,17 +456,19 @@ window.YDStaff = (function () {
   function invoiceDialog(h, b, url, money) {
     const me = (h.me && h.me()) || {};
     const missing = [];
-    if (b.status === 'pending' && me.bankReady === false) missing.push('your bank details aren\'t set, so it asks the guest to call you to pay');
-    if (b.status === 'pending' && me.advancePct === 0) missing.push('no advance % is set, so it asks for the full amount');
+    const adv = b.advance || { required: true, full: false };
+    const asks = b.status === 'pending' && adv.required; // a reservation with no advance asks for no payment
+    if (asks && me.bankReady === false) missing.push('your bank details aren\'t set, so it asks the guest to call you to pay');
+    if (asks && adv.full && adv.source !== 'booking') missing.push('no advance amount is set, so it asks for the full amount');
     docDialog(h, {
       note: missing.length ? `This invoice is missing details: ${esc(missing.join('; '))}. Add them in <b>Booking setup → Advance payment</b>.` : '',
       issuedBy: me.name || '',
       title: `${b.status === 'pending' ? 'Reservation invoice' : 'Invoice'} ${b.ref}`,
       sub: `${b.guestName} · ${money(b.totalAmount)}${b.holdUntil && b.status === 'pending' ? ` · held until ${new Date(`${b.holdUntil}T00:00:00Z`).toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' })}` : ''}`,
       url, phone: b.guestPhone, email: b.guestEmail, emailPath: `/bookings/${b.id}/invoice/email`,
-      waText: `Hello ${String(b.guestName || '').split(' ')[0]}, here is the invoice for your booking ${b.ref} at Top Mountain Resort. It shows the advance and our bank details:`,
+      waText: `Hello ${String(b.guestName || '').split(' ')[0]}, here is the invoice for your booking ${b.ref} at Top Mountain Resort. ${asks ? 'It shows the advance and our bank details:' : 'There is nothing to pay before you arrive:'}`,
     });
   }
 
-  return { esc, printUrl, printDocFrame, onPrintTip, markDoc, billDialog, serviceDialog, sendPdf, pdfName, rateFieldsHtml, syncRates, rateBody, rateParams, priceLine, payFieldsHtml, readPayFields, bindPayFields, docDialog, receiptDialog, invoiceDialog };
+  return { esc, printUrl, printDocFrame, onPrintTip, markDoc, billDialog, serviceDialog, sendPdf, pdfName, rateFieldsHtml, syncRates, rateBody, rateParams, priceLine, payFieldsHtml, readPayFields, bindPayFields, slipFieldHtml, bindSlipField, guestSlipKey, formSlip, slipFile, uploadSlip, slipLink, docDialog, receiptDialog, invoiceDialog };
 })();

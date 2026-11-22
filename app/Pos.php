@@ -208,6 +208,8 @@ final class Pos
             'methodLabel' => self::METHODS[$p['method']] ?? $p['method'],
             'note' => $p['note'],
             'details' => is_array($details) ? array_map(fn ($k, $v) => ['label' => (string) $k, 'value' => (string) $v], array_keys($details), $details) : [],
+            // the bank slip staff attached (staff only: the link needs an admin login)
+            'slipUrl' => ($p['slip'] ?? '') !== '' ? '/api/admin/pos/payments/' . (int) $p['id'] . '/slip' : null,
             'createdAt' => Db::fromDbTime($p['created_at']),
             'createdBy' => $p['created_by'],
             'createdByName' => Auth::nameOf((string) $p['created_by']),
@@ -289,6 +291,7 @@ final class Pos
             'charges' => $charges,
             'lines' => self::groupLines($charges),
             'payments' => $payments,
+            'guestSlips' => self::guestSlips($b['id']), // payment slips the guest sent from their invoice link
             'log' => $log,
             'totals' => self::totals($b, $charges, $payments),
         ];
@@ -491,7 +494,7 @@ final class Pos
         return $out;
     }
 
-    /** {amount, method, note, fee (commission or charges taken off), details {fieldKey: value}} */
+    /** {amount, method, note, fee (commission or charges taken off), details {fieldKey: value}, slip (from saveSlip, optional)} */
     public static function paymentInput(mixed $in): array
     {
         if (!is_array($in)) throw new BookingError('Invalid payment.');
@@ -501,14 +504,151 @@ final class Pos
         if (!is_string($method) || !isset(self::METHODS[$method])) throw new BookingError('Choose how it was paid.');
         $fee = ($in['fee'] ?? '') === '' || ($in['fee'] ?? null) === null ? 0 : Bookings::int($in['fee'], 0, $amount);
         if ($fee === null) throw new BookingError('The commission or fee must be a whole number, not more than the payment.');
-        return ['amount' => $amount, 'method' => $method, 'note' => Bookings::str($in['note'] ?? null, 255) ?? '', 'fee' => $fee, 'details' => self::paymentDetails($in['details'] ?? [])];
+        return ['amount' => $amount, 'method' => $method, 'note' => Bookings::str($in['note'] ?? null, 255) ?? '', 'fee' => $fee, 'details' => self::paymentDetails($in['details'] ?? []), 'slip' => self::slipInput($in['slip'] ?? null)];
     }
 
     /** Insert a payment row; returns its id. $billId null = an advance on an open room bill. */
     private static function insertPayment(int $bookingId, ?int $billId, array $p, string $now, string $by): int
     {
-        return Db::run('INSERT INTO pos_payments (booking_id, bill_id, amount, method, note, fee, details, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [$bookingId, $billId, $p['amount'], $p['method'], $p['note'], $p['fee'] ?? 0, !empty($p['details']) ? Js::json($p['details']) : '', $now, $by]);
+        $id = Db::run('INSERT INTO pos_payments (booking_id, bill_id, amount, method, note, fee, details, slip, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [$bookingId, $billId, $p['amount'], $p['method'], $p['note'], $p['fee'] ?? 0, !empty($p['details']) ? Js::json($p['details']) : '', $p['slip'] ?? '', $now, $by]);
+        // a slip the guest sent: now recorded as this payment
+        if (($p['slip'] ?? '') !== '') Db::run('UPDATE booking_slips SET payment_id = ? WHERE slip = ? AND payment_id IS NULL', [$id, $p['slip']]);
+        return $id;
+    }
+
+    // ---------- payment slips: a photo or PDF of the bank slip, kept in DATA_DIR/slips (never public) ----------
+    public const SLIP_LIMIT = 10485760; // 10 MB
+    private const SLIP_TYPES = ['jpg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp', 'gif' => 'image/gif', 'pdf' => 'application/pdf'];
+    private const SLIP_NAME = '/^slip-\d{8}-[a-f0-9]{16}\.(jpg|png|webp|gif|pdf)$/';
+
+    private static function slipDir(): string
+    {
+        return Config::get()['dataDir'] . '/slips';
+    }
+
+    /** What a file is from its first bytes (not the name or the browser's type): jpg|png|webp|gif|pdf, or null. */
+    private static function slipKind(string $bytes): ?string
+    {
+        if (str_starts_with($bytes, "\xFF\xD8\xFF")) return 'jpg';
+        if (str_starts_with($bytes, "\x89PNG\r\n\x1A\n")) return 'png';
+        if (str_starts_with($bytes, 'RIFF') && substr($bytes, 8, 4) === 'WEBP') return 'webp';
+        if (str_starts_with($bytes, 'GIF87a') || str_starts_with($bytes, 'GIF89a')) return 'gif';
+        if (str_starts_with($bytes, '%PDF-')) return 'pdf';
+        return null;
+    }
+
+    /** Keep an uploaded slip until the payment it belongs to is recorded; returns its name for paymentInput's 'slip'. */
+    public static function saveSlip(string $bytes): string
+    {
+        if ($bytes === '') throw new BookingError('No file received.');
+        if (strlen($bytes) > self::SLIP_LIMIT) throw new BookingError('The slip is too large. Up to 10 MB.');
+        $kind = self::slipKind($bytes);
+        if ($kind === null) throw new BookingError('The slip must be a photo (JPG, PNG, WebP) or a PDF.');
+        $dir = self::slipDir();
+        if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) throw new \RuntimeException('Could not create the slips folder.');
+        $name = 'slip-' . gmdate('Ymd') . '-' . bin2hex(random_bytes(8)) . '.' . $kind;
+        if (@file_put_contents("$dir/$name", $bytes, LOCK_EX) !== strlen($bytes)) throw new \RuntimeException('Could not save the slip.');
+        return $name;
+    }
+
+    /** A slip name from saveSlip, checked: '' = none. */
+    private static function slipInput(mixed $name): string
+    {
+        if ($name === null || $name === '') return '';
+        if (!is_string($name) || !preg_match(self::SLIP_NAME, $name) || !is_file(self::slipDir() . "/$name")) throw new BookingError('The payment slip was not found. Please attach it again.');
+        if (Db::one('SELECT id FROM pos_payments WHERE slip = ? AND voided_at IS NULL', [$name])) throw new BookingError('That slip is already on another payment. Please attach it again.');
+        return $name;
+    }
+
+    /** A kept slip's file: [bytes, mime type, download name ($base + extension)], or null. */
+    private static function slipFileOf(string $name, string $base): ?array
+    {
+        if ($name === '' || !preg_match(self::SLIP_NAME, $name, $m)) return null;
+        $bytes = @file_get_contents(self::slipDir() . "/$name");
+        return $bytes === false ? null : [$bytes, self::SLIP_TYPES[$m[1]], "$base.{$m[1]}"];
+    }
+
+    /** A payment's slip: [bytes, mime type, download name], or null if it has none. */
+    public static function slipOf(mixed $paymentId): ?array
+    {
+        $p = Db::one('SELECT id, slip FROM pos_payments WHERE id = ?', [self::idOf($paymentId)]);
+        return $p ? self::slipFileOf((string) $p['slip'], self::receiptNo((int) $p['id']) . '-slip') : null;
+    }
+
+    // ---------- slips guests send from their invoice link (booking_slips), until staff record the payment ----------
+    private const GUEST_SLIP_STATUSES = ['pending', 'confirmed', 'checked_in'];
+    private const MAX_GUEST_SLIPS = 10;
+
+    /** Whether the guest can (still) send a payment slip for this booking. */
+    public static function takesGuestSlips(array $b): bool
+    {
+        return $b['source'] !== 'block' && in_array($b['status'], self::GUEST_SLIP_STATUSES, true);
+    }
+
+    /** The guest sends a payment slip (the file's bytes) with what they paid and a note, both optional. Returns it as guestSlips() lists it. */
+    public static function addGuestSlip(array $b, string $bytes, mixed $amount = null, mixed $note = null): array
+    {
+        if (!self::takesGuestSlips($b)) throw new BookingError('This booking no longer takes payment slips. Please call us.');
+        if ((int) Db::one('SELECT COUNT(*) AS n FROM booking_slips WHERE booking_id = ?', [$b['id']])['n'] >= self::MAX_GUEST_SLIPS) {
+            throw new BookingError('We already have ' . self::MAX_GUEST_SLIPS . ' slips for this booking. Please call us.');
+        }
+        $amt = null;
+        if ($amount !== null && $amount !== '') {
+            $amt = Bookings::int($amount, 1, self::MAX_AMOUNT);
+            if ($amt === null) throw new BookingError('Enter the amount you paid as a whole number, or leave it empty.');
+        }
+        $name = self::saveSlip($bytes);
+        $id = Db::run('INSERT INTO booking_slips (booking_id, slip, amount, note, created_at) VALUES (?, ?, ?, ?, ?)',
+            [$b['id'], $name, $amt, Bookings::str($note, 255) ?? '', self::now()]);
+        self::log($b['id'], 'guest_slip', 'The guest sent a payment slip' . ($amt ? ' for ' . number_format($amt) : ''), null, 'guest');
+        return self::mapGuestSlip(Db::one('SELECT * FROM booking_slips WHERE id = ?', [$id]));
+    }
+
+    private static function mapGuestSlip(array $s): array
+    {
+        $pid = $s['payment_id'] === null ? null : (int) $s['payment_id'];
+        return [
+            'id' => (int) $s['id'],
+            'key' => $s['slip'], // a payment's 'slip' takes this to keep the guest's slip (staff only)
+            'amount' => $s['amount'] === null ? null : (int) $s['amount'],
+            'note' => $s['note'],
+            'uploadedAt' => Db::fromDbTime($s['created_at']),
+            'url' => '/api/admin/pos/guest-slips/' . (int) $s['id'],
+            'paymentId' => $pid, // the payment staff recorded with it (null = not yet)
+            'receiptNo' => $pid ? self::receiptNo($pid) : null,
+        ];
+    }
+
+    /** The slips a booking's guest sent, newest first (for staff). */
+    public static function guestSlips(int $bookingId): array
+    {
+        return array_map([self::class, 'mapGuestSlip'], Db::all('SELECT * FROM booking_slips WHERE booking_id = ? ORDER BY id DESC', [$bookingId]));
+    }
+
+    /** For the bookings list: each booking + slipWaiting, how many slips its guest sent that are not on a payment yet. */
+    public static function withGuestSlips(array $bookings): array
+    {
+        $ids = array_values(array_filter(array_map(fn ($b) => (int) $b['id'], $bookings)));
+        $waiting = [];
+        if ($ids) {
+            $rows = Db::all('SELECT booking_id, COUNT(*) AS n FROM booking_slips WHERE payment_id IS NULL AND booking_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ') GROUP BY booking_id', $ids);
+            foreach ($rows as $r) $waiting[(int) $r['booking_id']] = (int) $r['n'];
+        }
+        return array_map(fn ($b) => $b + ['slipWaiting' => $waiting[(int) $b['id']] ?? 0], $bookings);
+    }
+
+    /** What the guest's own invoice shows of the slips they sent: [{uploadedAt, amount, note, recorded}]. */
+    public static function guestSlipsPublic(int $bookingId): array
+    {
+        return array_map(fn ($s) => ['uploadedAt' => $s['uploadedAt'], 'amount' => $s['amount'], 'note' => $s['note'], 'recorded' => $s['paymentId'] !== null], self::guestSlips($bookingId));
+    }
+
+    /** A guest's slip for staff to open: [bytes, mime type, download name], or null. */
+    public static function guestSlipFile(mixed $id): ?array
+    {
+        $s = Db::one('SELECT s.id, s.slip, b.ref FROM booking_slips s JOIN bookings b ON b.id = s.booking_id WHERE s.id = ?', [self::idOf($id)]);
+        return $s ? self::slipFileOf((string) $s['slip'], $s['ref'] . '-guest-slip-' . (int) $s['id']) : null;
     }
 
     private static function paymentText(array $p, string $suffix = ''): string
@@ -559,6 +699,7 @@ final class Pos
             if ($p['bill_id'] !== null) throw new BookingError('That payment is on an issued bill. Void the bill first.', 409, 'closed');
             if ($p['voided_at'] !== null) throw new BookingError('That payment was already cancelled.', 409, 'voided');
             Db::run('UPDATE pos_payments SET voided_at = ?, voided_by = ? WHERE id = ?', [self::now(), $by, (int) $p['id']]);
+            Db::run('UPDATE booking_slips SET payment_id = NULL WHERE payment_id = ?', [(int) $p['id']]); // the guest's slip can go on the corrected payment
             self::log($b['id'], 'payment_void', 'Cancelled ' . lcfirst(self::paymentText(['method' => $p['method'], 'note' => $p['note']])), -(int) $p['amount'], $by);
         });
         return self::folio((int) $p['booking_id']);

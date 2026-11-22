@@ -249,7 +249,7 @@
     try {
       const r = await fetch(`/api/availability?${new URLSearchParams({ kind: 'room', checkIn: a, checkOut: l })}`, { headers: { Accept: 'application/json' } });
       const data = await r.json().catch(() => ({}));
-      if (r.ok && Array.isArray(data.rooms)) return { rooms: data.rooms };
+      if (r.ok && Array.isArray(data.rooms)) return { rooms: data.rooms, advanceOn: data.advanceOn !== false };
       if (r.status === 400 && data.error) return { error: data.error }; // e.g. a stay longer than allowed
       return null;
     } catch (_) { return null; }
@@ -295,7 +295,7 @@
         const group = ad + ch;
         const beds = free.reduce((sum, r) => sum + r.capacity, 0);
         note = fits.length && group <= Math.max(...fits.map(r => r.capacity))
-          ? `From ${money(from)} for ${plural(nights, 'night')}. Choose a room (or several) and send your booking: it is confirmed once the advance is paid.`
+          ? `From ${money(from)} for ${plural(nights, 'night')}. Choose a room (or several) and send your booking: ${answer.advanceOn ? 'it is confirmed once the advance is paid.' : 'nothing to pay now, you pay at the resort.'}`
           : beds >= group
             ? `No single room sleeps all ${group} of you, so choose two or more rooms on the next page. They’re booked together, on one booking.`
             : `The free rooms sleep ${beds}, fewer than your ${group}. Book the rooms that are free, or call us and we’ll help.`;

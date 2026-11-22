@@ -48,6 +48,7 @@ final class Mailer
             $stamp = str_replace([':', '.'], '-', Js::isoNow());
             $name = substr((string) preg_replace('/[^a-z0-9]+/i', '-', $subject), 0, 50);
             $file = "$dir/$stamp-$name.html";
+            for ($i = 2; file_exists($file); $i++) $file = "$dir/$stamp-$name-$i.html"; // the same email to several admins at once
             file_put_contents($file, '<!-- To: ' . self::esc($toLine) . ' | Subject: ' . self::esc($subject) . " -->\n" . $html);
             $shown = str_starts_with($file, YDR_ROOT . '/') ? substr($file, strlen(YDR_ROOT) + 1) : $file;
             error_log('[mail] SMTP not configured — saved "' . $subject . '" for ' . $toLine . ' to ' . $shown);
@@ -115,10 +116,10 @@ HTML;
         return $b['package'] === 'day_out';
     }
 
-    /** What was booked, for subjects and plain-text lines: "Room 101", "Full board for 4" or "Day out". */
+    /** What was booked, for subjects and plain-text lines: "Room 101 · Half board", "Full board for 4" or "Day out". */
     private static function what(array $b): string
     {
-        if ($b['kind'] === 'room') return (string) $b['roomName'];
+        if ($b['kind'] === 'room') return (string) ($b['place'] ?: $b['roomName']);
         return $b['packageLabel'] . ' for ' . ($b['adults'] + $b['children']);
     }
 
@@ -129,18 +130,27 @@ HTML;
     }
 
     /**
-     * What to pay, where, and who to call (Admin → Booking setup): the advance when an advance %
-     * is set, otherwise the total.
+     * What to pay, where, and who to call (Admin → Booking setup): the booking's advance (a % of the
+     * total, a fixed amount, or its own), or the total when no advance amount is set. A booking that
+     * asks for no advance is told it pays at the resort.
      */
     private static function paymentBlock(array $b): string
     {
         $pay = Bookings::paymentInfo();
-        $due = Bookings::advanceDue($b['totalAmount']);
+        $adv = $b['advance'];
+        $phone = self::esc($pay['phone']);
+        if (!$adv['required']) {
+            return self::p("<strong>Your booking is pending.</strong> There is nothing to pay before you arrive: the total of <strong>" . self::money($b['totalAmount'])
+                . "</strong> is paid at the resort. We will call you to confirm your booking; for any questions, call us on <strong>$phone</strong> quoting <strong>" . self::esc($b['ref']) . '</strong>.')
+                . ($pay['note'] !== '' ? self::p(nl2br(self::esc($pay['note']))) : '');
+        }
+        $due = $adv['full'] ? 0 : $adv['amount']; // an advance smaller than the total
         $toPay = $due ?: $b['totalAmount'];
         $hasBank = $pay['accountNo'] !== '';
         $rows = array_filter([
             ['Total', self::money($b['totalAmount'])],
-            [$due ? 'Advance to pay now' : 'Amount to pay', '<strong>' . self::money($toPay) . '</strong>' . ($due ? ' (' . $pay['advancePct'] . '% of the total)' : '')],
+            [$due ? 'Advance to pay now' : 'Amount to pay', '<strong>' . self::money($toPay) . '</strong>' . ($due && $adv['pct'] !== null ? ' (' . $adv['pct'] . '% of the total)' : '')],
+            $due ? ['Balance on arrival', self::money($b['totalAmount'] - $due)] : ['', ''],
             ['Bank', self::esc($pay['bank'])],
             ['Account name', self::esc($pay['accountName'])],
             ['Account number', $hasBank ? '<strong>' . self::esc($pay['accountNo']) . '</strong>' : ''],
@@ -149,10 +159,10 @@ HTML;
         ], fn ($r) => $r[1] !== '');
         $tr = '';
         foreach ($rows as [$k, $v]) $tr .= '<tr><td style="padding:7px 12px;color:#6b6a5e;width:42%">' . $k . '</td><td style="padding:7px 12px">' . $v . '</td></tr>';
-        $phone = self::esc($pay['phone']);
         $amount = '<strong>' . self::money($toPay) . '</strong>';
         $ask = $hasBank
-            ? "please pay $amount to the bank account below, then call us on <strong>$phone</strong> to confirm your booking."
+            ? "please pay $amount to the bank account below, then <a href=\"" . self::esc(Docs::invoiceUrl($b)) . '#slip" style="color:#3f6b3a;font-weight:bold">upload the payment slip on your invoice</a>'
+                . " or call us on <strong>$phone</strong> to confirm your booking."
             : "please call us on <strong>$phone</strong> to confirm it and to arrange the payment of $amount.";
         return self::p("<strong>Your booking is pending.</strong> To confirm it, $ask We confirm your booking as soon as the payment is received.")
             . '<table role="presentation" width="100%" style="font-family:Arial,sans-serif;font-size:14px;border-collapse:collapse;margin:0 0 18px;background:#f5eedd;border-radius:10px">' . $tr . '</table>'
@@ -180,6 +190,8 @@ HTML;
             if ($b['kind'] === 'room') {
                 $several = count($b['rooms'] ?? []) > 1;
                 $rows[] = [$several ? 'Rooms' : 'Room', self::esc($b['roomName']) . ' <span style="color:#6b6a5e">(' . ($several ? count($b['rooms']) . ' rooms' : self::esc((string) $b['roomType'])) . ', sleeps ' . $b['capacity'] . ')</span>'];
+                if (!empty($b['wholeCategory'])) $rows[] = ['Whole villa', self::esc($b['wholeCategory']['name'] . ' — ' . $b['wholeCategory']['label']) . ' <span style="color:#6b6a5e">(one price for all its rooms)</span>'];
+                if (($b['mealPlan'] ?? '') !== '') $rows[] = ['Meal plan', self::esc($b['mealPlanLabel']) . ' <span style="color:#6b6a5e">(' . self::esc(strtolower(Bookings::MEAL_PLANS[$b['mealPlan']][1])) . ')</span>'];
             } else {
                 $rows[] = ['Booking', self::esc($b['packageLabel']) . ' <span style="color:#6b6a5e">(per person)</span>'];
                 if ($forAdmin) $rows[] = ['Rooms', $b['roomName'] ? self::esc($b['roomName']) : '— not assigned —'];
@@ -246,6 +258,49 @@ HTML;
         return true;
     }
 
+    /** Email the guest the link to check and confirm their booking (Confirmations). */
+    public static function sendConfirmLink(array $b, string $url): bool
+    {
+        if (!Bookings::isEmail((string) $b['guestEmail'])) return false;
+        $site = Site::info();
+        $missing = Confirmations::missing($b);
+        $ask = $missing ? ' fill in the few details we still need (' . self::esc(strtolower(implode(', ', array_map(fn ($k) => Confirmations::FIELDS[$k][2], $missing)))) . ')' : '';
+        $name = Js::trim((string) $b['guestName']);
+        $html = self::layout('Please confirm your booking',
+            "\n    " . self::p(($name !== '' ? 'Dear ' . self::esc($name) . ', thank' : 'Thank') . ' you for booking with ' . self::esc($site['name']) . '. Please check the details of your booking <strong>' . self::esc($b['ref']) . '</strong>,' . $ask . ' and confirm it.')
+            . "\n    " . self::button($url, 'Check and confirm your booking →')
+            . "\n    " . self::detailsTable($b)
+            . "\n    " . self::p('If anything is not right, simply reply to this email or call us on ' . self::esc($site['phone']) . '.')
+            . "\n    " . self::p('Warmly,<br><em>The Top Mountain team</em>'));
+        self::sendQuietly(['to' => $b['guestEmail'], 'replyTo' => $site['email'], 'subject' => "Please confirm your booking {$b['ref']} · {$site['name']}", 'html' => $html,
+            'text' => "Please check and confirm your booking {$b['ref']} (" . self::what($b) . ', ' . self::when($b) . "): $url"]);
+        return true;
+    }
+
+    /** A guest has confirmed their booking from its link: tell each admin address, and thank the guest (with how to pay, for a reservation). */
+    public static function notifyGuestConfirmed(array $b, array $changes): void
+    {
+        $base = Config::get()['baseUrl'];
+        $rows = '';
+        foreach ($changes as $c) {
+            $rows .= '<tr><td style="padding:7px 0;color:#6b6a5e;width:42%;vertical-align:top">' . self::esc($c['label']) . '</td><td style="padding:7px 0">'
+                . ($c['from'] !== '' ? '<s style="color:#9a958a">' . self::esc($c['from']) . '</s> → ' : '') . str_replace("\n", '<br>', self::esc($c['to'])) . '</td></tr>';
+        }
+        $did = Confirmations::changesText($changes);
+        $html = self::layout('Guest confirmed the booking ☑️', "\n    " . self::p(self::esc($b['guestName']) . ' has checked and confirmed booking <strong>' . self::esc($b['ref']) . '</strong> from the link you sent.'
+                . ($b['status'] === 'pending' ? ' It is still a reservation: confirm it in the admin panel ' . ($b['advance']['required'] ? 'once the advance is paid.' : 'when you are ready.') : ''))
+            . "\n    " . self::detailsTable($b, true)
+            . "\n    " . '<h2 style="font-size:17px;font-weight:normal;margin:0 0 6px;color:#13261b">' . ($changes ? 'What the guest filled in' : 'The guest changed nothing') . '</h2>'
+            . ($rows !== '' ? "\n    " . '<table role="presentation" width="100%" style="font-family:Arial,sans-serif;font-size:14px;border-collapse:collapse;margin-bottom:22px">' . $rows . '</table>' : '')
+            . "\n    " . '<p style="margin:0 0 26px"><a href="' . $base . '/admin/#/bookings/' . $b['id'] . '" style="display:inline-block;background:#e8a33d;color:#13261b;text-decoration:none;font-family:Arial,sans-serif;font-weight:bold;padding:13px 22px;border-radius:999px">Open in admin panel →</a></p>');
+        $text = "Guest confirmed booking {$b['ref']}: {$b['guestName']}, " . self::what($b) . ', ' . self::when($b) . ($did !== '' ? ". They $did" : '') . ".\n$base/admin/#/bookings/{$b['id']}";
+        $admin = ['subject' => "Guest confirmed {$b['ref']} — {$b['guestName']}, {$b['checkIn']}", 'html' => $html, 'text' => $text];
+        foreach (self::adminEmails() as $to) self::sendQuietly(['to' => $to, 'replyTo' => $b['guestEmail']] + $admin);
+        if ($b['guestEmail'] === '') return;
+        $mail = $b['status'] === 'confirmed' ? self::guestConfirmed($b) : self::guestReceived($b);
+        self::sendQuietly(['to' => $b['guestEmail'], 'replyTo' => Site::info()['email']] + $mail);
+    }
+
     private static function adminNewBooking(array $b): array
     {
         $base = Config::get()['baseUrl'];
@@ -278,10 +333,11 @@ HTML;
         $intro = self::isDayOut($b)
             ? 'We\'re looking forward to your <strong>' . self::esc(strtolower($b['packageLabel'])) . '</strong> on ' . self::niceDate($b['checkIn']) . '.'
             : ($b['kind'] === 'room'
-                ? 'We have reserved <strong>' . self::esc($b['roomName']) . '</strong> for you.'
+                ? 'We have reserved <strong>' . self::esc($b['place'] ?: $b['roomName']) . '</strong> for you.'
                 : 'We have reserved <strong>' . self::esc(strtolower($b['packageLabel'])) . '</strong> for your group of ' . ($b['adults'] + $b['children']) . ', with rooms ready for you on arrival.');
         $pay = Bookings::paymentInfo();
-        $due = Bookings::advanceDue($b['totalAmount']) ?: $b['totalAmount'];
+        $adv = $b['advance'];
+        $due = $adv['amount'] ?: $b['totalAmount'];
         $html = self::layout('Thank you, ' . self::esc($first) . " — we've received your booking",
             "\n    " . self::p($intro . ' Your total is <strong>' . self::money($b['totalAmount']) . '</strong>.')
             . "\n    " . self::paymentBlock($b)
@@ -289,6 +345,11 @@ HTML;
             . "\n    " . self::detailsTable($b)
             . "\n    " . self::p('If you have any questions, simply reply to this email or call us on ' . self::esc($pay['phone']) . '.')
             . "\n    " . self::p('See you in the hills,<br><em>The Top Mountain team</em>'));
+        if (!$adv['required']) {
+            return ['subject' => "Booking {$b['ref']} received — nothing to pay before you arrive", 'html' => $html,
+                'text' => "Thank you! Booking {$b['ref']} for " . self::what($b) . ', ' . self::when($b) . '. Total ' . self::money($b['totalAmount'])
+                    . ", paid at the resort: nothing to pay before you arrive. It is pending: we will call you to confirm it. Questions: call {$pay['phone']}."];
+        }
         return ['subject' => "Booking {$b['ref']} received — please pay and call us to confirm", 'html' => $html,
             'text' => "Thank you! Booking {$b['ref']} for " . self::what($b) . ', ' . self::when($b) . '. Total ' . self::money($b['totalAmount']) . '. It is pending: please '
                 . ($pay['accountNo'] !== '' ? 'pay ' . self::money($due) . " to {$pay['bank']} account {$pay['accountNo']} ({$pay['accountName']}), reference {$b['ref']}, then " : '')
@@ -316,17 +377,71 @@ HTML;
         $phone = self::esc(Site::info()['phone']);
         $what = self::isDayOut($b)
             ? 'your ' . self::esc(strtolower($b['packageLabel'])) . ' on ' . self::niceDate($b['checkIn'])
-            : self::esc($b['kind'] === 'room' ? (string) $b['roomName'] : $b['packageLabel']) . ' (' . self::niceDate($b['checkIn']) . ' – ' . self::niceDate($b['checkOut']) . ')';
+            : self::esc($b['kind'] === 'room' ? (string) ($b['place'] ?: $b['roomName']) : $b['packageLabel']) . ' (' . self::niceDate($b['checkIn']) . ' – ' . self::niceDate($b['checkOut']) . ')';
         $html = self::layout('Your booking has been cancelled',
             "\n    " . self::p('Dear ' . self::esc($b['guestName']) . ', your booking <strong>' . self::esc($b['ref']) . "</strong> for $what has been cancelled.")
             . "\n    " . self::p("If this is unexpected or you'd like to choose new dates, please contact us on $phone or reply to this email."));
         return ['subject' => "Booking cancelled — {$b['ref']}", 'html' => $html, 'text' => "Your booking {$b['ref']} has been cancelled."];
     }
 
+    public const MAX_ADMIN_EMAILS = 10;
+
+    /**
+     * Who is emailed about each new website booking: the list saved in Admin → Settings, or
+     * ADMIN_NOTIFY_EMAILS from .env until a list has been saved there.
+     */
+    public static function adminEmails(): array
+    {
+        $saved = Settings::get('notify_emails');
+        if ($saved === '') return Config::get()['admin']['notifyEmails'];
+        $list = json_decode($saved, true);
+        return is_array($list) ? array_values(array_filter($list, fn ($e) => is_string($e) && $e !== '')) : [];
+    }
+
+    /** For Admin → Settings: the addresses, and whether they still come from .env. */
+    public static function adminEmailsInfo(): array
+    {
+        return ['emails' => self::adminEmails(), 'fromEnv' => Settings::get('notify_emails') === '', 'max' => self::MAX_ADMIN_EMAILS];
+    }
+
+    /** Replace the list of admin addresses (empty entries are skipped, repeats kept once). */
+    public static function saveAdminEmails(mixed $in): array
+    {
+        if (!is_array($in)) throw new BookingError('Send the list of email addresses.');
+        $out = [];
+        foreach ($in as $e) {
+            if (!is_string($e)) throw new BookingError('Each email address must be text.');
+            $e = trim($e);
+            if ($e === '') continue;
+            if (strlen($e) > 254 || !filter_var($e, FILTER_VALIDATE_EMAIL)) throw new BookingError('"' . Js::slice($e, 60) . '" is not an email address.');
+            $out[strtolower($e)] ??= $e;
+        }
+        if (count($out) > self::MAX_ADMIN_EMAILS) throw new BookingError('Up to ' . self::MAX_ADMIN_EMAILS . ' email addresses.');
+        Settings::set(['notify_emails' => json_encode(array_values($out), JSON_UNESCAPED_UNICODE)]);
+        return self::adminEmailsInfo();
+    }
+
+    /** The guest sent a payment slip from their invoice link: tell each admin address (the slip opens in the admin panel). */
+    public static function notifyGuestSlip(array $b, array $slip): void
+    {
+        $base = Config::get()['baseUrl'];
+        $paid = $slip['amount'] ? 'They say they paid <strong>' . self::money($slip['amount']) . '</strong>.' : 'They did not give the amount.';
+        $next = $b['status'] === 'pending' ? 'Check it against the bank account, then confirm the booking with the advance — the slip is offered there.'
+            : 'Check it against the bank account, then record the payment — the slip is offered there.';
+        $html = self::layout('Payment slip received 🧾', "\n    " . self::p(self::esc($b['guestName']) . ' sent a payment slip for booking <strong>' . self::esc($b['ref']) . '</strong>. ' . $paid
+                . ($slip['note'] !== '' ? ' Their note: “' . self::esc($slip['note']) . '”.' : '') . ' ' . $next)
+            . "\n    " . self::detailsTable($b, true)
+            . "\n    " . '<p style="margin:0 0 26px"><a href="' . $base . '/admin/#/bookings/' . $b['id'] . '" style="display:inline-block;background:#e8a33d;color:#13261b;text-decoration:none;font-family:Arial,sans-serif;font-weight:bold;padding:13px 22px;border-radius:999px">Open in admin panel →</a></p>');
+        $text = "Payment slip received for {$b['ref']} from {$b['guestName']}" . ($slip['amount'] ? ' (' . number_format($slip['amount']) . ')' : '') . ".\n$base/admin/#/bookings/{$b['id']}";
+        $admin = ['subject' => "Payment slip for {$b['ref']} — {$b['guestName']}", 'html' => $html, 'text' => $text];
+        foreach (self::adminEmails() as $to) self::sendQuietly(['to' => $to, 'replyTo' => $b['guestEmail']] + $admin);
+    }
+
     public static function notifyNewBooking(array $b): void
     {
-        $c = Config::get();
-        self::sendQuietly(['to' => $c['admin']['notifyEmails'], 'replyTo' => $b['guestEmail']] + self::adminNewBooking($b));
+        // one email per address, so a mistyped address can't stop the others getting theirs
+        $admin = self::adminNewBooking($b);
+        foreach (self::adminEmails() as $to) self::sendQuietly(['to' => $to, 'replyTo' => $b['guestEmail']] + $admin);
         if ($b['guestEmail'] !== '') self::sendQuietly(['to' => $b['guestEmail'], 'replyTo' => Site::info()['email']] + self::guestReceived($b));
     }
 

@@ -186,7 +186,7 @@ window.YDPOS = function (h) {
           <div><b>${money(p.amount)}</b> · ${esc(p.methodLabel)} <span class="src">· ${fdt(p.createdAt)}</span>
             ${[...(p.details || []).map((d) => `${d.label}: ${d.value}`), p.note, p.fee ? `${money(p.fee)} kept by the agent or bank — ${money(p.net)} reached the account` : ''].filter(Boolean).length
               ? `<span class="pay-row__sub">${esc([...(p.details || []).map((d) => `${d.label}: ${d.value}`), p.note, p.fee ? `${money(p.fee)} kept by the agent or bank — ${money(p.net)} reached the account` : ''].filter(Boolean).join(' · '))}</span>` : ''}</div>
-          <button type="button" class="abtn abtn--sm" data-receipt="${p.id}">${icon('a-print', 15)}${esc(p.receiptNo)}</button></div>`).join('')}</div></section>` : ''}`;
+          <span class="pay-row__acts">${window.YDStaff.slipLink(p, true)}<button type="button" class="abtn abtn--sm" data-receipt="${p.id}">${icon('a-print', 15)}${esc(p.receiptNo)}</button></span></div>`).join('')}</div></section>` : ''}`;
     const guestOf = () => ({ guestName: s.guest.name, guestPhone: s.guest.phone || '', guestEmail: s.guest.email || '', ref: bill.billNo });
     view.onclick = async (e) => {
       if (e.target.closest('[data-bill-svc]')) { window.YDStaff.serviceDialog(h, bill, money, () => { h.closeModal(); viewBill(id); }); return; }

@@ -103,7 +103,7 @@ final class App
 
         $path = $req->path;
         // reservations whose hold date passed without an advance free their dates
-        if (preg_match('#^/(api|calendar|invoice|receipt)(?=/|$)#i', $path)) {
+        if (preg_match('#^/(api|calendar|invoice|receipt|confirm)(?=/|$)#i', $path)) {
             try {
                 Bookings::releaseExpired();
             } catch (DbUnavailable $e) {
@@ -126,7 +126,9 @@ final class App
     {
         // CSRF guard: state-changing API calls must be JSON and come from our own origin.
         if (!in_array($req->method, ['GET', 'HEAD', 'OPTIONS'], true)) {
-            $isUpload = $sub === '/admin/media' && $req->isImage();
+            $isUpload = ($sub === '/admin/media' && $req->isImage())
+                || ((strtolower(rtrim($sub, '/')) === '/admin/pos/slips' || preg_match('#^/invoice/[^/]+/[^/]+/slip/?$#i', $sub))
+                    && $req->typeisHasBody() && ($req->isImage() || $req->mime() === 'application/pdf'));
             $hasBody = (int) ($req->header('content-length') ?? 0) > 0 || $req->header('transfer-encoding') !== null;
             if (($hasBody || $req->method === 'POST') && !$isUpload && !$req->isJson()) { $res->json(['error' => 'Expected JSON'], 415); return; }
             $origin = $req->header('origin');
@@ -148,6 +150,14 @@ final class App
     {
         unset($r['active'], $r['sort']);
         return $r;
+    }
+
+    /** [meal plan, whole category or null] from a query (?mealPlan=HB&wholeCategory=3); a bad plan is room only. */
+    private static function planQuery(Request $req): array
+    {
+        try { $plan = Bookings::planOf($req->q('mealPlan')); } catch (BookingError $e) { $plan = 'RO'; }
+        $cat = Js::truthy($req->q('wholeCategory')) ? Bookings::getCategory($req->q('wholeCategory')) : null;
+        return [$plan, $cat && $cat['whole'] ? $cat : null];
     }
 
     private static function publicApi(Request $req, Response $res, string $p): bool
@@ -189,7 +199,8 @@ final class App
             $kind = in_array($req->q('kind'), ['per_person', 'day_out'], true) ? $req->q('kind') : 'room';
             if ($kind === 'room') {
                 $rooms = Bookings::searchRooms($req->q('checkIn'), $req->q('checkOut'));
-                $res->json(['rooms' => array_map([self::class, 'publicRoom'], $rooms), 'partyArea' => Bookings::partyAreaStatus($req->q('checkIn'), $req->q('checkOut'))]);
+                $res->json(['rooms' => array_map([self::class, 'publicRoom'], $rooms), 'partyArea' => Bookings::partyAreaStatus($req->q('checkIn'), $req->q('checkOut')),
+                    'advanceOn' => Bookings::advanceRule()['on']]); // the home page says whether bookings wait for an advance
                 return true;
             }
             $pkg = Bookings::getPackage($req->q('packageId'));
@@ -238,7 +249,8 @@ final class App
             $nights = $kind === 'day_out' ? 0 : Bookings::validateStay($req->q('checkIn'), $req->q('checkOut'));
             $adults = $kind === 'room' ? 0 : max(1, min(Bookings::MAX_GROUP_ADULTS, Js::parseInt($req->q('adults')) ?: 1));
             $children = $kind === 'room' ? 0 : max(0, min(Bookings::MAX_GROUP_CHILDREN, Js::parseInt($req->q('children')) ?: 0));
-            $q = Bookings::quote($kind, $room, $pkg, $nights, $adults, $children, false, false, [], $rooms);
+            [$plan, $whole] = $kind === 'room' ? self::planQuery($req) : ['RO', null];
+            $q = Bookings::quote($kind, $room, $pkg, $nights, $adults, $children, false, false, [], $rooms, $plan, $whole);
             $c = Coupons::check($req->q('code'), $q['stay']);
             $res->json(['coupon' => ['code' => $c['code'], 'label' => $c['label'], 'type' => $c['type'], 'value' => $c['value'], 'discount' => $c['discount']]]);
             return true;
@@ -253,15 +265,20 @@ final class App
 
             $b = Bookings::createBooking($body);
             Mailer::notifyNewBooking($b);
+            Whatsapp::newBooking($b);
             $res->json(['booking' => [
                 'ref' => $b['ref'],
                 'kind' => $b['kind'],
                 'roomName' => $b['kind'] === 'room' ? $b['roomName'] : null,
                 'roomType' => $b['roomType'],
+                'place' => $b['place'],
+                'mealPlan' => $b['mealPlan'],
+                'mealPlanLabel' => $b['mealPlanLabel'],
+                'wholeCategory' => $b['wholeCategory'],
                 'capacity' => $b['kind'] === 'room' ? $b['capacity'] : null,
                 'package' => $b['package'],
                 'packageLabel' => $b['packageLabel'],
-                'advanceDue' => Bookings::advanceDue($b['totalAmount']),
+                'advance' => $b['advance'], // what to pay before arrival (Bookings::advanceOf)
                 'checkIn' => $b['checkIn'],
                 'checkOut' => $b['checkOut'],
                 'nights' => $b['nights'],
@@ -278,6 +295,45 @@ final class App
                 'guestEmail' => $b['guestEmail'],
                 'status' => $b['status'],
             ]], 201);
+            return true;
+        }
+
+        // A guest sends their payment slip from their invoice link: the photo or PDF is the body;
+        // X-Slip-Amount and X-Slip-Note (URI-encoded) are optional. Staff are emailed and sent a WhatsApp alert.
+        if ($req->method === 'POST' && self::route('/invoice/:ref/:code/slip', $p, $params)) {
+            if (!RateLimit::hit($req, $res, 'slip', 60 * 60 * 1000, 10, 'Too many uploads — please wait a while, or send the slip to us on WhatsApp.')) return true;
+            $b = Docs::invoiceBooking($params['ref'], $params['code']);
+            if (!$b) { $res->json(['error' => 'This link isn\'t valid. Please ask us for a new one.'], 404); return true; }
+            $bytes = $req->isImage() || $req->mime() === 'application/pdf' ? $req->readRaw(Pos::SLIP_LIMIT) : '';
+            $slip = Pos::addGuestSlip($b, $bytes, rawurldecode((string) ($req->header('x-slip-amount') ?? '')), rawurldecode((string) ($req->header('x-slip-note') ?? '')));
+            Mailer::notifyGuestSlip($b, $slip);
+            Whatsapp::guestSlip($b, $slip);
+            $res->json(['slips' => Pos::guestSlipsPublic($b['id'])], 201);
+            return true;
+        }
+
+        // A guest confirms a booking staff made, from its private link: the details they filled in + agree
+        if ($req->method === 'POST' && self::route('/confirm/:ref/:code', $p, $params)) {
+            if (!RateLimit::hit($req, $res, 'confirm', 10 * 60 * 1000, 10, 'Too many tries — please wait a few minutes or call us.')) return true;
+            $body = $req->body;
+            if (Js::truthy($body['website'] ?? null)) { $res->json(['error' => 'Invalid submission.'], 400); return true; } // honeypot
+            $b = Confirmations::byLink($params['ref'], $params['code']);
+            if (!$b) { $res->json(['error' => 'This link isn\'t valid. Please ask us for a new one.'], 404); return true; }
+            $r = Confirmations::confirm($b, $body);
+            Confirmations::notify($r['booking'], $r['changes']);
+            $res->json(['confirm' => Confirmations::page($r['booking'])]);
+            return true;
+        }
+
+        // The website's chat window: a guest's message (+ the conversation so far, kept in their browser)
+        // goes to the chatbot through Chatbot.php; the browser never talks to the chatbot itself.
+        if ($req->method === 'POST' && self::route('/chat', $p)) {
+            if (!Chatbot::webOn()) { $res->json(['error' => 'The chat is not available.'], 404); return true; }
+            if (!RateLimit::hit($req, $res, 'chat', 10 * 60 * 1000, 40, 'Too many messages — please wait a few minutes, or call or WhatsApp us.')) return true;
+            $body = $req->body;
+            if (Js::truthy($body['website'] ?? null)) { $res->json(['error' => 'Invalid message.'], 400); return true; } // honeypot
+            $r = Chatbot::reply(Js::str($body['message'] ?? ''), is_array($body['history'] ?? null) ? $body['history'] : []);
+            $res->json(['reply' => $r['reply'], 'parts' => $r['parts']]);
             return true;
         }
         return false;
@@ -323,8 +379,10 @@ final class App
                 'bankReady' => Bookings::paymentInfo()['accountNo'] !== '',
                 'emailEnabled' => Mailer::enabled(),
                 'mailFrom' => (string) preg_replace('/^.*<([^>]+)>.*$/', '$1', $cfg['smtp']['from']),
-                'notifyEmails' => $cfg['admin']['notifyEmails'],
+                'notifyEmails' => Mailer::adminEmails(),
                 'currency' => $cfg['site']['currency'],
+                'siteName' => $cfg['site']['name'],
+                'mealPlans' => Bookings::mealPlans(),
                 'today' => Bookings::today(),
                 'statuses' => Bookings::STATUSES,
                 'sources' => Bookings::SOURCES,
@@ -336,6 +394,7 @@ final class App
                 'methods' => Pos::METHODS,
                 'paymentFields' => Pos::paymentFields(),
                 'advancePct' => Bookings::paymentInfo()['advancePct'],
+                'advanceRule' => Bookings::advanceRule(), // Booking setup's advance: on, type (pct | amount), pct, amount
                 'holdDays' => Bookings::holdDays(),
                 'printPaper' => Docs::paper(),
                 'papers' => Docs::PAPERS,
@@ -392,16 +451,36 @@ final class App
         if ($get && self::route('/site', $p)) { $res->json(['site' => Site::admin()]); return; }
         if ($m === 'PATCH' && self::route('/site', $p)) { $res->json(['site' => Site::save($body)]); return; }
 
+        // ---------- who hears about new bookings: admin emails ----------
+        if ($get && self::route('/notify-emails', $p)) { $res->json(['notify' => Mailer::adminEmailsInfo()]); return; }
+        if ($m === 'PUT' && self::route('/notify-emails', $p)) { $res->json(['notify' => Mailer::saveAdminEmails($body['emails'] ?? null)]); return; }
+
         // ---------- WhatsApp alerts ----------
         if ($get && self::route('/whatsapp', $p)) { $res->json(['whatsapp' => Whatsapp::admin()]); return; }
         if ($m === 'PATCH' && self::route('/whatsapp', $p)) { $res->json(['whatsapp' => Whatsapp::save($body)]); return; }
+        // {id?}: test one number, or every number on the list
         if ($m === 'POST' && self::route('/whatsapp/test', $p)) {
-            try {
-                $r = Whatsapp::send("👋 Test from the {$cfg['site']['name']} booking system. Booking confirmations will arrive here.", true);
-                $res->json(['ok' => true, 'outbox' => !empty($r['outbox'])]);
-            } catch (\Throwable $e) {
-                $res->json(['error' => 'WhatsApp failed: ' . $e->getMessage()], 502);
+            $only = Js::truthy($body['id'] ?? null) ? Js::str($body['id']) : null;
+            $r = Whatsapp::send("👋 Test from the {$cfg['site']['name']} booking system. New bookings and confirmations will arrive here.", true, $only);
+            $results = $r['results'] ?? [];
+            if (!$results) { $res->json(['error' => $only === null ? 'Add a WhatsApp number first.' : 'Save this number first, then send the test.'], 400); return; }
+            $failed = array_values(array_filter($results, fn ($x) => isset($x['error'])));
+            if (count($failed) === count($results)) {
+                $res->json(['error' => 'WhatsApp failed: ' . (count($failed) === 1 ? $failed[0]['error'] : implode('; ', array_map(fn ($x) => "+{$x['phone']}: {$x['error']}", $failed)))], 502);
+                return;
             }
+            $res->json(['ok' => true, 'results' => array_map(fn ($x) => ['phone' => $x['phone'], 'name' => $x['name'], 'sent' => !empty($x['sent']), 'outbox' => !empty($x['outbox']), 'error' => $x['error'] ?? null], $results)]);
+            return;
+        }
+
+        // ---------- the website's chatbot: its knowledge base, the chat window switch, and a test chat ----------
+        if ($get && self::route('/chatbot', $p)) { $res->json(['chatbot' => Chatbot::admin()]); return; }
+        if ($m === 'POST' && self::route('/chatbot/create', $p)) { Chatbot::create(is_array($body['seed'] ?? null) ? $body['seed'] : []); $res->json(['chatbot' => Chatbot::admin()], 201); return; }
+        if ($m === 'PUT' && self::route('/chatbot/kb', $p)) { Chatbot::save($body); $res->json(['chatbot' => Chatbot::admin()]); return; }
+        if ($m === 'PATCH' && self::route('/chatbot/web', $p)) { Chatbot::saveWeb($body); $res->json(['chatbot' => Chatbot::admin()]); return; }
+        if ($m === 'POST' && self::route('/chatbot/test', $p)) {
+            // an admin trying the bot: the same answer a guest would get, without needing the website switch on
+            $res->json(Chatbot::reply(Js::str($body['message'] ?? ''), is_array($body['history'] ?? null) ? $body['history'] : []));
             return;
         }
 
@@ -438,7 +517,7 @@ final class App
         }
 
         if ($m === 'POST' && self::route('/test-email', $p)) {
-            $to = Js::truthy($body['to'] ?? null) ? $body['to'] : $cfg['admin']['notifyEmails'];
+            $to = Js::truthy($body['to'] ?? null) ? $body['to'] : Mailer::adminEmails();
             try {
                 $r = Mailer::testEmail($to);
                 $res->json(['ok' => true, 'outbox' => !empty($r['outbox']), 'skipped' => !empty($r['skipped'])]);
@@ -495,9 +574,14 @@ final class App
 
         // ---------- rooms ----------
         if ($get && self::route('/rooms', $p)) {
-            $res->json(['rooms' => Bookings::listRooms(true)]);
+            $res->json(['rooms' => Bookings::listRooms(true), 'categories' => Bookings::listCategories(), 'mealPlans' => Bookings::mealPlans()]);
             return;
         }
+        // ---------- the rate sheet: room categories, and each room's type, guests and price per meal plan ----------
+        if ($get && self::route('/rates', $p)) { $res->json(Bookings::rateSheet()); return; }
+        if ($m === 'PUT' && self::route('/rates', $p)) { $res->json(Bookings::saveRateSheet($body)); return; }
+        if ($m === 'POST' && self::route('/categories', $p)) { $res->json(['category' => Bookings::saveCategory(null, $body)], 201); return; }
+        if ($m === 'DELETE' && self::route('/categories/:id', $p, $params)) { Bookings::deleteCategory($params['id']); $res->json(['ok' => true]); return; }
         if ($m === 'PATCH' && self::route('/rooms/:id', $p, $params)) {
             $res->json(['room' => Bookings::updateRoom(Js::number($params['id']), $body)]);
             return;
@@ -535,7 +619,9 @@ final class App
 
         // ---------- bookings ----------
         if ($get && self::route('/bookings', $p)) {
-            $res->json(['bookings' => Bookings::listBookings($req->query)]);
+            // each with guestConfirm: whether its confirmation link was sent, and whether the guest has confirmed
+            // and slipWaiting: payment slips the guest sent that are not on a payment yet
+            $res->json(['bookings' => Pos::withGuestSlips(Confirmations::decorate(Bookings::listBookings($req->query)))]);
             return;
         }
 
@@ -562,7 +648,7 @@ final class App
         if ($get && self::route('/bookings/:id', $p, $params)) {
             $b = Bookings::getBooking(Js::number($params['id']));
             if (!$b) { $res->json(['error' => 'Booking not found'], 404); return; }
-            $res->json(['booking' => $b]);
+            $res->json(['booking' => $b, 'guestSlips' => Pos::guestSlips($b['id'])]); // guestSlips: payment slips the guest sent
             return;
         }
 
@@ -609,6 +695,21 @@ final class App
             if (!$b || $b['source'] === 'block') { $res->json(['error' => 'Booking not found'], 404); return; }
             if (!Mailer::sendInvoice($b)) { $res->json(['error' => 'This guest has no email address. Add one to the booking, or share the link on WhatsApp.'], 400); return; }
             $res->json(['ok' => true, 'to' => $b['guestEmail'], 'outbox' => !Mailer::enabled()]);
+            return;
+        }
+
+        // the booking's confirmation link for the guest: GET what it asks for and where it stands;
+        // POST {via: link | whatsapp | email} notes that it was sent (email: sends it)
+        if (($get || $m === 'POST') && self::route('/bookings/:id/confirm-link', $p, $params)) {
+            $b = Bookings::getBooking(Js::number($params['id']));
+            if (!$b || $b['source'] === 'block') { $res->json(['error' => 'Booking not found'], 404); return; }
+            if ($get) { $res->json(['link' => Confirmations::forAdmin($b)]); return; }
+            $via = (string) ($body['via'] ?? 'link');
+            if ($via === 'email' && !Mailer::sendConfirmLink($b, Confirmations::url($b))) {
+                $res->json(['error' => 'This guest has no email address. Add one to the booking, or send the link on WhatsApp.'], 400);
+                return;
+            }
+            $res->json(['link' => Confirmations::markSent($b, $admin['username'], $via), 'to' => $via === 'email' ? $b['guestEmail'] : null, 'outbox' => $via === 'email' && !Mailer::enabled()]);
             return;
         }
 
@@ -665,9 +766,15 @@ final class App
                 $roomList = array_values($roomList);
             }
             $room = $roomList[0] ?? null;
-            if ($kind === 'room' && !$room) { $res->json(['ok' => false, 'reason' => 'room']); return; }
             $ex = Js::number($req->q('exclude'));
             $exclude = (is_nan($ex) || $ex == 0) ? 0 : (int) $ex;
+            if ($kind === 'room' && !$room) {
+                // no room chosen yet: which rooms are taken on these dates, and by whom (the New booking room picker)
+                $taken = Bookings::takenRooms($checkIn, $checkOut, $exclude);
+                $res->json(['ok' => false, 'reason' => 'room', 'nights' => Bookings::nightsBetween($checkIn, $checkOut), 'busy' => array_keys($taken), 'busyRefs' => (object) $taken,
+                    'closed' => Closures::clashes($checkIn, $checkOut, $kind, $exclude)]);
+                return;
+            }
             $n = $dayOut ? 0 : Bookings::nightsBetween($checkIn, $checkOut);
             $adults = max(0, min(100, Js::parseInt($req->q('adults')) ?? 0));
             $children = max(0, min(100, Js::parseInt($req->q('children')) ?? 0));
@@ -675,7 +782,15 @@ final class App
             // rates agreed with the guest (empty = the price list)
             $rate = fn (string $k) => is_string($req->q($k)) && $req->q($k) !== '' && ctype_digit($req->q($k)) ? (int) $req->q($k) : null;
             $rates = $kind === 'room' ? ['room' => $rate('rateRoom')] : ['adult' => $rate('rateAdult'), 'child' => $rate('rateChild')];
-            $quote = Bookings::quote($kind, $room, $pkg, $n, $adults, $children, $party, Js::truthy($req->q('jblSpeaker')), $rates, $roomList);
+            // a room booking's meal plan, and a whole category (its rooms join the booking, at its one price)
+            [$plan, $whole] = $kind === 'room' ? self::planQuery($req) : ['RO', null];
+            if ($whole) {
+                $all = [];
+                foreach (array_merge(Bookings::categoryRooms($whole['id']), $roomList) as $r) $all[$r['id']] ??= $r;
+                $roomList = array_values($all);
+                $room = $roomList[0] ?? $room;
+            }
+            $quote = Bookings::quote($kind, $room, $pkg, $n, $adults, $children, $party, Js::truthy($req->q('jblSpeaker')), $rates, $roomList, $plan, $whole);
             // editing a booking that used a coupon: it comes off the new room charge again
             $couponOff = 0;
             $eb = $exclude ? Bookings::getBooking($exclude) : null;
@@ -685,7 +800,8 @@ final class App
             }
             $out = ['ok' => true, 'kind' => $kind, 'nights' => $n, 'lines' => $quote['lines'], 'total' => $quote['total'] - $couponOff, 'stay' => $quote['stay'], 'couponDiscount' => $couponOff,
                 // several rooms: the room rate is a night for all of them together
-                'listRates' => $kind === 'room' ? ['room' => array_sum(array_column($roomList, 'price'))] : ['adult' => $pkg['priceAdult'], 'child' => $pkg['priceChild']],
+                'listRates' => $kind === 'room' ? ['room' => Bookings::roomsPrice($roomList, $plan, $whole)] : ['adult' => $pkg['priceAdult'], 'child' => $pkg['priceChild']],
+                'mealPlan' => $kind === 'room' ? $plan : '', 'wholeRooms' => $whole ? array_column($roomList, 'id') : [],
                 'partyArea' => $party ? Bookings::partyAreaStatus($checkIn, $checkOut, $exclude) : null, 'capacity' => null, 'rooms' => [], 'busy' => [],
                 'closed' => Closures::clashes($checkIn, $checkOut, $kind, $exclude)]; // closed days and private parties (a warning: staff can still book)
             if (!$dayOut) {
@@ -696,6 +812,7 @@ final class App
                 $busy = [];
                 foreach ($occ as $night) $busy += $night['rooms'];
                 $out['busy'] = array_map('intval', array_keys($busy)); // rooms taken by other bookings
+                $out['busyRefs'] = (object) Bookings::refsByRoom($busy); // and the booking that has each
                 if ($kind === 'room') {
                     $ids = array_column($roomList, 'id');
                     $out['ok'] = !array_intersect($ids, array_keys($busy));
@@ -729,12 +846,16 @@ final class App
         if (preg_match('#^/users(/|$)#', $p)) return ['users'];
         if (preg_match('#^/finance(/|$)#', $p)) return ['finance'];
         if (preg_match('#^/coupons(\.csv)?(/|$)#', $p)) return ['coupons'];
-        if (preg_match('#^/(site|media|whatsapp|reminders|calendar-feed|test-email)(/|$)#', $p)) return ['site'];
+        if (preg_match('#^/(site|media|whatsapp|notify-emails|reminders|chatbot|calendar-feed|test-email)(/|$)#', $p)) return ['site'];
         if (preg_match('#^/(setup|packages|printing)(/|$)#', $p)) return ['setup'];
         if (preg_match('#^/rooms(/|$)#', $p)) return $read ? ['bookings'] : ['setup'];
+        if (preg_match('#^/(rates|categories)(/|$)#', $p)) return ['setup'];
         if (preg_match('#^/closures(/|$)#', $p)) return $read ? ['bookings', 'pos'] : ['setup'];
         if (preg_match('#^/pos/(categories|items)(/|$)#', $p)) return ['menu'];
         if (preg_match('#^/pos/(bills|payments)/[^/]+/void$#', $p)) return ['void'];
+        // payment slips: attached when confirming a booking or taking a payment, seen wherever payments are listed
+        if ($p === '/pos/slips') return ['bookings', 'pos'];
+        if ((preg_match('#^/pos/payments/\d+/slip$#', $p) || preg_match('#^/pos/guest-slips/\d+$#', $p)) && $read) return ['bookings', 'pos', 'finance'];
         if (preg_match('#^/pos(/|$)#', $p)) return ['pos'];
         // the POS opens a booking to check it in, gives a group its rooms and prices walk-ins
         if (preg_match('#^/bookings/\d+$#', $p) && $read) return ['bookings', 'pos'];
@@ -789,6 +910,21 @@ final class App
         if ($post && self::route('/folios/:id/payments', $p, $params)) { $res->json(['folio' => Pos::addPayment($params['id'], $body, $by)], 201); return; }
         if ($post && self::route('/charges/:id/void', $p, $params)) { $res->json(['folio' => Pos::voidCharge($params['id'], $body['reason'] ?? null, $by, $body['qty'] ?? null)]); return; }
         if ($post && self::route('/payments/:id/void', $p, $params)) { $res->json(['folio' => Pos::voidPayment($params['id'], $by)]); return; }
+        // payment slips: upload the photo or PDF first, then send its name as the payment's 'slip'
+        if ($post && self::route('/slips', $p)) {
+            $bytes = $req->isImage() || $req->mime() === 'application/pdf' ? $req->readRaw(Pos::SLIP_LIMIT) : '';
+            $res->json(['slip' => Pos::saveSlip($bytes)], 201);
+            return;
+        }
+        if ($get && (self::route('/payments/:id/slip', $p, $params) || self::route('/guest-slips/:gid', $p, $params))) {
+            $slip = isset($params['gid']) ? Pos::guestSlipFile($params['gid']) : Pos::slipOf($params['id']);
+            if (!$slip) { $res->json(['error' => 'Slip not found.'], 404); return; }
+            [$bytes, $type, $name] = $slip;
+            $res->header('Content-Disposition', 'inline; filename="' . $name . '"');
+            $res->header('Cache-Control', 'private, max-age=3600');
+            $res->send($bytes, $type);
+            return;
+        }
         // receipts: email one to the guest
         if ($post && self::route('/payments/:id/receipt/email', $p, $params)) {
             $pay = Pos::payment($params['id']);
@@ -905,6 +1041,9 @@ final class App
 
         $booking = fn () => [
             'rooms' => array_map([self::class, 'publicRoom'], Bookings::listRooms()),
+            // the rate sheet's categories (with any whole-category option) and the meal plans
+            'categories' => array_map(fn ($c) => ['id' => $c['id'], 'name' => $c['name'], 'whole' => $c['whole']], Bookings::rateSheet(true)['categories']),
+            'mealPlans' => Bookings::mealPlans(),
             'labels' => Bookings::labels(),
             'packages' => array_map(fn ($o) => array_diff_key($o, ['active' => 0, 'sort' => 0]), Bookings::listPackages()),
             'prices' => Bookings::prices(),
@@ -913,11 +1052,11 @@ final class App
             'groupMax' => ['adults' => Bookings::MAX_GROUP_ADULTS, 'children' => Bookings::MAX_GROUP_CHILDREN],
         ];
         // the home page loads its own photos (js/data/media.js); its booking form asks /api/availability
-        if ($p === '/') { self::renderPage($res, 'index.html', ['media' => [], 'mapLink' => Config::location()['place']]); return; }
+        if ($p === '/') { self::renderPage($res, 'index.html', ['media' => [], 'mapLink' => Config::location()['place'], 'chat' => Chatbot::webBoot()]); return; }
         if (self::route('/book', $p)) {
             $b = $booking();
             $keys = array_merge(['cabana-hillside', 'estate-aerial', 'dining-deck'], array_map(fn ($r) => $r['images'][0] ?? '', $b['rooms']));
-            self::renderPage($res, 'book.html', $b + ['media' => Media::pick($keys)]);
+            self::renderPage($res, 'book.html', $b + ['media' => Media::pick($keys), 'chat' => Chatbot::webBoot()]);
             return;
         }
         if (self::route('/admin', $p)) {
@@ -930,6 +1069,18 @@ final class App
         if (self::route('/pos', $p)) {
             $res->header('X-Robots-Tag', 'noindex, nofollow');
             self::renderPage($res, 'pos.html', []);
+            return;
+        }
+        // a booking's confirmation page: the guest checks it, fills in what is missing and confirms (Confirmations)
+        if (self::route('/confirm/:ref/:code', $p, $params)) {
+            $res->header('X-Robots-Tag', 'noindex, nofollow');
+            $res->header('Cache-Control', 'no-store');
+            $res->header('Referrer-Policy', 'no-referrer');
+            $b = Confirmations::byLink($params['ref'], $params['code']);
+            if (!$b) { $res->send(self::versionAssets(Docs::notFound()), 'text/html; charset=utf-8', 404); return; }
+            $c = Confirmations::page($b);
+            $c['api'] = '/api' . Confirmations::path($b);
+            self::renderPage($res, 'confirm.html', ['confirm' => $c, 'media' => Media::pick(array_values(array_filter(['cabana-hillside', $c['image']])))]);
             return;
         }
         // a booking's payment invoice, payment receipts and bills, at private links (?embed=1: inside the admin panel or the POS)
@@ -1039,10 +1190,19 @@ final class App
             $tokens['home.heroPreload'] = $hero ? self::heroPreload($hero[0]['key']) : '';
             $tokens['home.heroCaption'] = self::esc($hero[0]['caption'] ?? '');
         }
+        // the cancellation policy under the booking steps (Admin → Booking setup); nothing when it's empty
+        if ($name === 'book.html') $tokens['book.policy'] = self::policySection(Bookings::cancellationPolicy());
+        // what the booking page promises: confirmed once the advance is paid, or (no advance) nothing to pay before arrival
+        if ($name === 'book.html') {
+            $adv = Bookings::advanceRule()['on'];
+            $tokens['book.agree'] = $adv ? 'it is confirmed once ' . self::esc($s['name']) . ' receives the advance payment.'
+                : 'there is nothing to pay now: ' . self::esc($s['name']) . ' calls me to confirm it, and I pay at the resort.';
+            $tokens['book.perk'] = $adv ? 'Confirmed once the advance is paid' : 'Nothing to pay now — pay at the resort';
+        }
         $tpl = (string) file_get_contents(YDR_ROOT . '/views/' . $name);
         $html = preg_replace_callback('/\{\{\s*([\w.]+)\s*\}\}/', fn ($m) => array_key_exists($m[1], $tokens) ? $tokens[$m[1]] : $m[0], $tpl);
         $html = self::versionAssets((string) $html);
-        $res->header('Cache-Control', 'no-cache');
+        $res->header('Cache-Control', $name === 'confirm.html' ? 'no-store' : 'no-cache'); // a guest's confirmation page holds their details
         $res->send((string) $html, 'text/html; charset=utf-8');
     }
 
@@ -1056,6 +1216,40 @@ final class App
             $t = @filemtime(YDR_PUBLIC . '/' . $m[2]);
             return $t ? $m[1] . '="/' . $m[2] . '?v=' . $t . '"' : $m[0];
         }, $html);
+    }
+
+    /**
+     * The booking page's cancellation policy as HTML. The admin types plain text: a blank line
+     * starts a new paragraph, and lines starting with "-", "*" or "•" become a bulleted list.
+     * Everything is escaped. admin-setup.js previews it the same way.
+     */
+    public static function policySection(string $text): string
+    {
+        $text = trim(str_replace("\r\n", "\n", $text));
+        if ($text === '') return '';
+        $html = '';
+        $para = [];
+        $items = [];
+        $flush = function () use (&$html, &$para, &$items) {
+            if ($para) $html .= '<p>' . implode('<br>', $para) . '</p>';
+            if ($items) $html .= '<ul>' . implode('', array_map(fn ($i) => "<li>$i</li>", $items)) . '</ul>';
+            $para = [];
+            $items = [];
+        };
+        foreach (explode("\n", $text) as $line) {
+            $line = trim($line);
+            if ($line === '') { $flush(); continue; }
+            if (preg_match('/^[-*\x{2022}]\s*(.+)$/u', $line, $m)) {
+                if ($para) $flush();
+                $items[] = self::esc($m[1]);
+            } else {
+                if ($items) $flush();
+                $para[] = self::esc($line);
+            }
+        }
+        $flush();
+        return '<section class="bk-policy" id="cancellation-policy" aria-labelledby="policy-title">'
+            . '<h2 id="policy-title">Cancellation policy</h2><div class="bk-policy__body">' . $html . '</div></section>';
     }
 
     /** Load the first slideshow photo early, at the size that suits the screen. */

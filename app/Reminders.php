@@ -39,6 +39,7 @@ final class Reminders
             $rows = Db::all("SELECT b.id, b.hold_until FROM bookings b
                 WHERE b.status = 'pending' AND b.source <> 'block' AND b.guest_email <> ''
                 AND b.hold_until IS NOT NULL AND b.hold_until >= ? AND b.hold_until <= ?
+                AND " . Bookings::advanceRequiredSql() . "
                 AND NOT EXISTS (SELECT 1 FROM pos_payments p WHERE p.booking_id = b.id AND p.voided_at IS NULL)
                 AND NOT EXISTS (SELECT 1 FROM booking_reminders r WHERE r.booking_id = b.id AND r.kind = 'payment')
                 ORDER BY b.hold_until, b.id", [$today, Bookings::addDays($today, $payDays)]);
@@ -121,6 +122,7 @@ final class Reminders
             $kind = 'arrival';
             $ok = Mailer::sendArrivalReminder($b, self::daysBetween($today, $b['checkIn']));
         } elseif ($b['status'] === 'pending') {
+            if (!$b['advance']['required']) throw new BookingError('This reservation asks for no advance, so there is no payment to remind the guest about. Once you confirm it, they get an arrival reminder before check-in.');
             $kind = 'payment';
             $ok = Mailer::sendPaymentReminder($b, $b['holdUntil'] ? self::daysBetween($today, $b['holdUntil']) : 0);
         } else {

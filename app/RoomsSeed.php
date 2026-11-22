@@ -71,6 +71,69 @@ final class RoomsSeed
         return self::fixture('biteItems') ?? [['Chicken', 'Bite', 1800], ['Fish', 'Bite', 2000], ['Mix', 'Bite', 2200]];
     }
 
+    /**
+     * The resort's room rate sheet (per room, per night, LKR, taxes included): each category with
+     * its rooms and, where the sheet has one, the price for taking the whole category (bold rows).
+     * Room: [slug, name, room type, sleeps, [RO, BB, HB, FB]]. Whole: [code, label, sleeps, [RO, BB, HB, FB]].
+     * A room missing from the database is added with `images` (or the photos of `like`).
+     * Applied once, by Db::migrateV11; after that it is edited in Admin → Rate sheet.
+     */
+    public static function rateSheet(): array
+    {
+        $file = getenv('YDR_TEST_SEED');
+        if ($file) {
+            self::$fixture ??= require $file;
+            return self::$fixture['rateSheet'] ?? [];
+        }
+        $dbl = 'Double Room';
+        $fam = 'Family Room';
+        return [
+            ['name' => 'Wooden Cabana', 'whole' => ['W/VILLA', 'Whole Villa', 8, [30000, 44400, 60400, 76400]], 'rooms' => [
+                ['room-103', 'Room 103', $dbl, 2, [8000, 11600, 15600, 19600]],
+                ['room-102', 'Room 102', $dbl, 2, [8000, 11600, 15600, 19600]],
+                ['room-101', 'Room 101', $fam, 4, [15000, 22200, 30200, 38200]],
+            ]],
+            ['name' => 'White House', 'whole' => null, 'rooms' => [
+                ['room-104', 'Room 104', $dbl, 2, [9000, 12600, 16600, 20600]],
+                ['room-106', 'Room 106', 'Triple Room', 3, [12700, 18100, 24100, 30100]],
+                ['room-105', 'Room 105', $fam, 4, [13500, 20700, 28700, 36700]],
+            ]],
+            ['name' => 'Standard Villa', 'whole' => null, 'rooms' => [
+                ['room-108', 'Room 108', $fam, 5, [15400, 24400, 34400, 44400]],
+            ]],
+            ['name' => 'Standard Villa', 'whole' => ['W/ROOMS', 'Family Villa', 9, [39700, 55900, 73900, 91900]], 'rooms' => [
+                ['room-111', 'Room 111', $dbl, 2, [9000, 12600, 16600, 20600]],
+                ['room-115', 'Room 115', 'Triple Room', 3, [12700, 18100, 24100, 30100]],
+                ['room-114', 'Room 114', $dbl, 2, [9000, 12600, 16600, 20600]],
+                ['room-112', 'Room 112', $dbl, 2, [9000, 12600, 16600, 20600]],
+            ]],
+            ['name' => 'Mud House', 'whole' => null, 'rooms' => [
+                ['room-110', 'Room 110', 'Family Villa', 4, [13200, 20400, 28400, 36400]],
+            ]],
+            ['name' => 'Bungalow', 'whole' => ['W/B', 'Whole Bungalow', 8, [31200, 45600, 61600, 77600]], 'rooms' => [
+                // the website's one bungalow ("Rose Bungalow") becomes B1; B2 and B3 share its photos
+                ['rose-bungalow', 'Bungalow B1', $dbl, 2, [9000, 12600, 16600, 20600]],
+                ['bungalow-b2', 'Bungalow B2', $dbl, 2, [9000, 12600, 16600, 20600], 'like' => 'rose-bungalow'],
+                ['bungalow-b3', 'Bungalow B3', $fam, 4, [13200, 20400, 28400, 36400], 'like' => 'rose-bungalow'],
+            ]],
+            ['name' => 'Family Deluxe Villa', 'whole' => ['W/VILLA', 'Whole Villa', 18, [71500, 103900, 139900, 175900]], 'rooms' => [
+                ['room-125', 'Room 125', $fam, 4, [16500, 23700, 31700, 39700]],
+                ['room-126', 'Room 126', $fam, 4, [16500, 23700, 31700, 39700]],
+                ['room-127', 'Room 127', $fam, 4, [16500, 23700, 31700, 39700]],
+                ['room-128', 'Room 128', $fam, 6, [22000, 32800, 44800, 56800]],
+            ]],
+            ['name' => 'Luxury Villa', 'whole' => ['W/VILLA', 'Whole Villa', 24, [127500, 172500, 222500, 272500]], 'rooms' => [
+                ['room-116', 'Room 116', $dbl, 2, [16500, 20100, 24100, 28100]],
+                ['room-117', 'Room 117', $dbl, 2, [16500, 20100, 24100, 28100]],
+                // no photos of 118–120 yet: they use the villa's photos until their own are added
+                ['room-118', 'Room 118', $dbl, 2, [16500, 20100, 24100, 28100], 'like' => 'room-116'],
+                ['room-119', 'Room 119', $dbl, 2, [16500, 20100, 24100, 28100], 'like' => 'room-117'],
+                ['room-120', 'Room 120', $fam, 4, [22000, 29200, 37200, 45200], 'like' => 'room-116'],
+                ['room-121', 'Room 121', 'Luxury Cabana', 12, [38000, 59600, 83600, 107600]],
+            ]],
+        ];
+    }
+
     public static function all(): array
     {
         if ($rooms = self::fixture('rooms')) return $rooms;

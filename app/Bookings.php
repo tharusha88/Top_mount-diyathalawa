@@ -53,12 +53,25 @@ final class Bookings
     public const EVENT_OTHERS = ['open' => 'Rooms and day visits stay open to other guests', 'rooms' => 'No other guests stay that night', 'private' => 'Whole resort private — no other stays or day visits'];
     public const MAX_EVENT_GUESTS = 1000;
     private const PRICE_SETTINGS = ['partyArea' => 'price_party_area', 'jblSpeaker' => 'price_jbl_speaker'];
+    public const POLICY_MAX = 5000; // characters in the cancellation policy
     private const MAX_NIGHTS = 30;
     private const MAX_ADVANCE_DAYS = 540;
     public const MAX_GROUP_ADULTS = 50;
     public const MAX_GROUP_CHILDREN = 30;
     /** rooms one room booking can hold (a family or group taking several rooms) */
     public const MAX_ROOMS = 10;
+    /**
+     * Meal plans a room is booked with (the rate sheet's columns): code => [name, what it includes].
+     * Each room has a price per night for each (rooms.price is room only); 0 = not offered.
+     */
+    public const MEAL_PLANS = [
+        'RO' => ['Room only', 'No meals'],
+        'BB' => ['Bed & breakfast', 'Breakfast'],
+        'HB' => ['Half board', 'Breakfast and dinner'],
+        'FB' => ['Full board', 'Breakfast, lunch and dinner'],
+    ];
+    private const PLAN_COLUMNS = ['RO' => 'price', 'BB' => 'price_bb', 'HB' => 'price_hb', 'FB' => 'price_fb'];
+    private const WHOLE_COLUMNS = ['RO' => 'whole_ro', 'BB' => 'whole_bb', 'HB' => 'whole_hb', 'FB' => 'whole_fb'];
 
     private static function holdingSql(): string
     {
@@ -109,9 +122,12 @@ final class Bookings
             'slug' => $r['slug'],
             'name' => $r['name'],
             'type' => $r['type'],
+            'categoryId' => self::intOrNull($r['category_id'] ?? null),
+            'label' => (string) ($r['room_label'] ?? ''), // room type on the rate sheet, e.g. Double Room
             'tagline' => $r['tagline'],
             'description' => $r['description'],
-            'price' => (int) $r['price'],
+            'price' => (int) $r['price'], // room only
+            'prices' => self::planPrices($r),
             'capacity' => (int) $r['capacity'],
             'beds' => $r['beds'],
             'size' => (int) $r['size_sqm'],
@@ -145,6 +161,7 @@ final class Bookings
         $fields = [
             'name' => ['name', fn ($v) => self::str($v, 80, true)],
             'type' => ['type', fn ($v) => self::str($v, 60, true)],
+            'label' => ['room_label', fn ($v) => self::str($v, 80)],
             'tagline' => ['tagline', fn ($v) => self::str($v, 200)],
             'description' => ['description', fn ($v) => self::str($v, 2000)],
             'price' => ['price', fn ($v) => self::int($v, 0, 10000000)],
@@ -170,15 +187,180 @@ final class Bookings
         ];
         $sets = [];
         $vals = [];
+        // a category: the room's type follows its name
+        if (array_key_exists('categoryId', $patch)) {
+            $none = $patch['categoryId'] === null || $patch['categoryId'] === '';
+            $cat = $none ? null : self::getCategory($patch['categoryId']);
+            if (!$none && !$cat) throw new BookingError('That room category no longer exists.');
+            $sets[] = 'category_id = ?';
+            $vals[] = $cat ? $cat['id'] : null;
+            if ($cat) { unset($patch['type']); $sets[] = 'type = ?'; $vals[] = $cat['name']; }
+        }
         foreach ($fields as $k => [$col, $fn]) {
             if (!array_key_exists($k, $patch)) continue;
             $v = $fn($patch[$k]);
-            if ($v === null) throw new BookingError("Invalid value for $k");
+            if ($v === null) throw new BookingError("Invalid value for $k ({$room['name']})");
             $sets[] = "$col = ?";
             $vals[] = $v;
         }
+        // the price of each meal plan: {RO, BB, HB, FB} (RO is the room's price)
+        if (array_key_exists('prices', $patch)) {
+            if (!is_array($patch['prices'])) throw new BookingError('Invalid prices');
+            foreach (self::PLAN_COLUMNS as $plan => $col) {
+                if (!array_key_exists($plan, $patch['prices']) || ($col === 'price' && array_key_exists('price', $patch))) continue;
+                $v = self::int($patch['prices'][$plan], 0, 10000000);
+                if ($v === null) throw new BookingError("{$room['name']}: the " . self::MEAL_PLANS[$plan][0] . ' price must be a whole number of 0 or more.');
+                $sets[] = "$col = ?";
+                $vals[] = $v;
+            }
+        }
         if ($sets) Db::run('UPDATE rooms SET ' . implode(', ', $sets) . ' WHERE id = ?', array_merge($vals, [$room['id']]));
         return self::getRoom($room['id']);
+    }
+
+    /** A room's price per night for each meal plan, from a rooms row ($p: column prefix, e.g. room_). */
+    private static function planPrices(array $row, string $p = ''): array
+    {
+        $out = [];
+        foreach (self::PLAN_COLUMNS as $plan => $col) $out[$plan] = (int) ($row[$p . $col] ?? 0);
+        return $out;
+    }
+
+    /** What a room costs a night with this meal plan (0 = not offered). */
+    public static function planPrice(array $room, string $plan): int
+    {
+        return (int) ($room['prices'][$plan] ?? ($plan === 'RO' ? $room['price'] : 0));
+    }
+
+    /** A meal plan code from input ('' / null = room only). */
+    public static function planOf(mixed $v): string
+    {
+        if ($v === null || $v === '') return 'RO';
+        $code = is_string($v) ? strtoupper($v) : '';
+        if (!isset(self::MEAL_PLANS[$code])) throw new BookingError('Please choose a meal plan: room only, bed & breakfast, half board or full board.');
+        return $code;
+    }
+
+    /** The meal plans for the pages: [['code', 'name', 'includes'], ...]. */
+    public static function mealPlans(): array
+    {
+        $out = [];
+        foreach (self::MEAL_PLANS as $code => [$name, $inc]) $out[] = ['code' => $code, 'name' => $name, 'includes' => $inc];
+        return $out;
+    }
+
+    // ---------- room categories: the tables of the rate sheet ----------
+    private static function mapCategory(?array $c): ?array
+    {
+        if (!$c) return null;
+        $prices = [];
+        foreach (self::WHOLE_COLUMNS as $plan => $col) $prices[$plan] = (int) $c[$col];
+        return [
+            'id' => (int) $c['id'],
+            'name' => $c['name'],
+            'sort' => (int) $c['sort'],
+            // every room of the category together, at one price (e.g. "Whole Villa"); null = not offered
+            'whole' => $c['whole_label'] !== '' ? ['code' => $c['whole_code'], 'label' => $c['whole_label'], 'capacity' => (int) $c['whole_pax'], 'prices' => $prices] : null,
+            'wholeCode' => $c['whole_code'], 'wholeLabel' => $c['whole_label'], 'wholeCapacity' => (int) $c['whole_pax'], 'wholePrices' => $prices,
+        ];
+    }
+
+    public static function listCategories(): array
+    {
+        return array_map([self::class, 'mapCategory'], Db::all('SELECT * FROM room_categories ORDER BY sort, id'));
+    }
+
+    public static function getCategory(mixed $id): ?array
+    {
+        $n = self::int($id, 1, PHP_INT_MAX);
+        return $n ? self::mapCategory(Db::one('SELECT * FROM room_categories WHERE id = ?', [$n])) : null;
+    }
+
+    /** The rooms of a category that guests can book (a whole-category booking takes them all). */
+    public static function categoryRooms(int $categoryId): array
+    {
+        return array_values(array_filter(self::listRooms(), fn ($r) => $r['categoryId'] === $categoryId));
+    }
+
+    /**
+     * The rate sheet: each category with its rooms, in order, and the rooms with no category.
+     * $public: only rooms guests can book, and only the categories that have one.
+     */
+    public static function rateSheet(bool $public = false): array
+    {
+        $rooms = self::listRooms(!$public);
+        $cats = [];
+        foreach (self::listCategories() as $c) {
+            $c['rooms'] = array_values(array_filter($rooms, fn ($r) => $r['categoryId'] === $c['id']));
+            if ($public && !$c['rooms']) continue;
+            $cats[] = $c;
+        }
+        $known = array_column($cats, 'id');
+        $loose = array_values(array_filter($rooms, fn ($r) => !in_array($r['categoryId'], $known, true)));
+        return ['categories' => $cats, 'uncategorised' => $loose, 'mealPlans' => self::mealPlans()];
+    }
+
+    /** Create ($id = null) or update a room category: its name, place, and the whole-category option and prices. */
+    public static function saveCategory(?int $id, array $in): array
+    {
+        $cur = $id ? Db::one('SELECT * FROM room_categories WHERE id = ?', [$id]) : null;
+        if ($id && !$cur) throw new BookingError('Room category not found', 404, 'not_found');
+        $has = fn (string $k) => !$cur || array_key_exists($k, $in);
+        $name = $has('name') ? self::str($in['name'] ?? null, 80, true) : $cur['name'];
+        if ($name === null) throw new BookingError('Please name the room category.');
+        $code = $has('wholeCode') ? self::str($in['wholeCode'] ?? '', 20) : $cur['whole_code'];
+        $label = $has('wholeLabel') ? self::str($in['wholeLabel'] ?? '', 80) : $cur['whole_label'];
+        $pax = $has('wholeCapacity') ? self::int($in['wholeCapacity'] ?? 0, 0, 500) : (int) $cur['whole_pax'];
+        if ($code === null || $label === null || $pax === null) throw new BookingError("$name: check the whole-category option.");
+        $prices = [];
+        $given = is_array($in['wholePrices'] ?? null) ? $in['wholePrices'] : [];
+        foreach (self::WHOLE_COLUMNS as $plan => $col) {
+            $v = array_key_exists($plan, $given) ? self::int($given[$plan], 0, 100000000) : ($cur ? (int) $cur[$col] : 0);
+            if ($v === null) throw new BookingError("$name: the whole-category prices must be whole numbers of 0 or more.");
+            $prices[$col] = $v;
+        }
+        $sort = array_key_exists('sort', $in) ? self::int($in['sort'], 0, 10000) : ($cur ? (int) $cur['sort'] : (int) Db::one('SELECT COALESCE(MAX(sort), 0) AS n FROM room_categories')['n'] + 1);
+        if ($sort === null) throw new BookingError('Invalid position.');
+        $vals = [$name, $sort, $code, $label, $pax, ...array_values($prices)];
+        if ($cur) {
+            Db::run('UPDATE room_categories SET name = ?, sort = ?, whole_code = ?, whole_label = ?, whole_pax = ?, whole_ro = ?, whole_bb = ?, whole_hb = ?, whole_fb = ? WHERE id = ?', [...$vals, $id]);
+            if ($name !== $cur['name']) Db::run('UPDATE rooms SET type = ? WHERE category_id = ?', [$name, $id]); // rooms keep their category's name
+        } else {
+            $id = Db::run('INSERT INTO room_categories (name, sort, whole_code, whole_label, whole_pax, whole_ro, whole_bb, whole_hb, whole_fb) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', $vals);
+        }
+        return self::getCategory($id);
+    }
+
+    /** Delete a room category with no rooms (bookings that took it whole keep their price). */
+    public static function deleteCategory(mixed $id): void
+    {
+        $c = self::getCategory($id);
+        if (!$c) throw new BookingError('Room category not found', 404, 'not_found');
+        if (Db::one('SELECT id FROM rooms WHERE category_id = ?', [$c['id']])) throw new BookingError("Move the rooms of {$c['name']} to another category first.", 409, 'in_use');
+        if (Db::one('SELECT id FROM bookings WHERE whole_category_id = ?', [$c['id']])) throw new BookingError("Bookings have taken the whole of {$c['name']}, so it can't be deleted. Turn its whole option off instead.", 409, 'in_use');
+        Db::run('DELETE FROM room_categories WHERE id = ?', [$c['id']]);
+    }
+
+    /**
+     * Save Admin -> Rate sheet in one go: categories [{id, name, wholeCode, wholeLabel, wholeCapacity,
+     * wholePrices: {RO, BB, HB, FB}}] in their order, and rooms [{id, name, categoryId, label,
+     * capacity, prices: {RO, BB, HB, FB}}]. All or nothing.
+     */
+    public static function saveRateSheet(array $in): array
+    {
+        $cats = is_array($in['categories'] ?? null) && Js::isList($in['categories']) ? $in['categories'] : [];
+        $rooms = is_array($in['rooms'] ?? null) && Js::isList($in['rooms']) ? $in['rooms'] : [];
+        Db::transaction(function () use ($cats, $rooms) {
+            foreach ($cats as $i => $c) {
+                if (!is_array($c)) throw new BookingError('Invalid room category');
+                self::saveCategory(self::int($c['id'] ?? null, 1, PHP_INT_MAX), ['sort' => $i + 1] + $c);
+            }
+            foreach ($rooms as $r) {
+                if (!is_array($r) || !isset($r['id'])) throw new BookingError('Invalid room');
+                self::updateRoom($r['id'], array_intersect_key($r, array_flip(['name', 'categoryId', 'label', 'capacity', 'prices'])));
+            }
+        });
+        return self::rateSheet();
     }
 
     // ---------- per-person options (packages) ----------
@@ -268,6 +450,7 @@ final class Bookings
     public static function paymentInfo(): array
     {
         $site = Site::info();
+        $rule = self::advanceRule();
         return [
             'phone' => Settings::get('pay_phone') !== '' ? Settings::get('pay_phone') : $site['phone'],
             'whatsapp' => $site['whatsapp'],
@@ -275,15 +458,72 @@ final class Bookings
             'accountName' => Settings::get('pay_account_name'),
             'accountNo' => Settings::get('pay_account_no'),
             'branch' => Settings::get('pay_branch'),
-            'advancePct' => max(0, min(100, Settings::int('pay_advance_pct'))),
+            'advanceOn' => $rule['on'],
+            'advanceType' => $rule['type'],
+            'advancePct' => $rule['pct'],
+            'advanceAmount' => $rule['amount'],
             'note' => Settings::get('pay_note'),
         ];
     }
 
-    public static function advanceDue(int $total): int
+    /**
+     * Booking setup's advance: whether guests pay one before arrival, and how much — a % of the
+     * total or a fixed amount (0 = the whole total). Each booking can have its own (advanceOf).
+     */
+    public static function advanceRule(): array
     {
-        $pct = self::paymentInfo()['advancePct'];
-        return $pct ? (int) round($total * $pct / 100) : 0;
+        return [
+            'on' => Settings::get('pay_advance_on') !== '0',
+            'type' => Settings::get('pay_advance_type') === 'amount' ? 'amount' : 'pct',
+            'pct' => max(0, min(100, Settings::int('pay_advance_pct'))),
+            'amount' => max(0, Settings::int('pay_advance_amount')),
+        ];
+    }
+
+    /**
+     * The advance a booking asks for before arrival. $own is the booking's own setting
+     * (bookings.advance_amount): null = Booking setup's rule, 0 = no advance, more = that amount.
+     * Returns:
+     *   required  the booking waits for an advance (false: nothing to pay before arrival)
+     *   amount    what to pay before arrival (0 when not required); never more than the total
+     *   full      that is the whole total (no advance amount set, or one as big as the total)
+     *   pct       the % of the total, when Booking setup's % gives the amount (else null)
+     *   source    'booking' (its own) | 'setup' | 'off' (Booking setup collects no advance)
+     *   own       $own
+     */
+    public static function advanceOf(int $total, ?int $own = null): array
+    {
+        $total = max(0, $total);
+        $rule = self::advanceRule();
+        $pct = null;
+        if ($own !== null) {
+            [$required, $amount, $source] = [$own > 0, min(max(0, $own), $total), 'booking'];
+        } elseif (!$rule['on']) {
+            [$required, $amount, $source] = [false, 0, 'off'];
+        } elseif ($rule['type'] === 'amount' && $rule['amount'] > 0) {
+            [$required, $amount, $source] = [true, min($rule['amount'], $total), 'setup'];
+        } elseif ($rule['type'] === 'pct' && $rule['pct'] > 0) {
+            [$required, $amount, $source, $pct] = [true, (int) round($total * $rule['pct'] / 100), 'setup', $rule['pct']];
+        } else {
+            [$required, $amount, $source] = [true, $total, 'setup']; // no advance amount set: the whole total
+        }
+        if (!$required) $amount = 0;
+        return ['required' => $required, 'amount' => $amount, 'full' => $required && $amount >= $total, 'pct' => $pct, 'source' => $source, 'own' => $own];
+    }
+
+    /** A booking's own advance from admin input: '' / null = Booking setup's rule, 0 = none, more = that amount. */
+    private static function advanceInput(mixed $v): ?int
+    {
+        if ($v === null || $v === '') return null;
+        $n = self::int($v, 0, 100000000);
+        if ($n === null) throw new BookingError('The advance must be a whole amount of 0 or more (empty = as in Booking setup).');
+        return $n;
+    }
+
+    /** The cancellation policy shown at the bottom of the booking page (Admin → Booking setup; '' = none). */
+    public static function cancellationPolicy(): string
+    {
+        return trim(Settings::get('cancel_policy'));
     }
 
     /** Guests per night the hotel takes (0 = only limited by the rooms). */
@@ -326,6 +566,7 @@ final class Bookings
             'defaultPhone' => Site::info()['phone'],
             'holdDays' => self::holdDays(),
             'paymentFields' => Pos::paymentFields(),
+            'cancellationPolicy' => self::cancellationPolicy(),
         ];
     }
 
@@ -366,6 +607,11 @@ final class Bookings
             if ($v === null) throw new BookingError('Hold reservations for a whole number of days (0 = never release them).');
             $set['hold_days'] = $v;
         }
+        if (array_key_exists('cancellationPolicy', $in)) {
+            $v = self::str($in['cancellationPolicy'], self::POLICY_MAX);
+            if ($v === null) throw new BookingError('Please check the cancellation policy.');
+            $set['cancel_policy'] = str_replace("\r\n", "\n", $v);
+        }
         if (array_key_exists('paymentFields', $in)) Pos::savePaymentFields($in['paymentFields']);
         if (isset($in['prices']) && is_array($in['prices'])) self::updatePrices($in['prices']);
         if (isset($in['payment']) && is_array($in['payment'])) {
@@ -377,10 +623,20 @@ final class Bookings
                 if ($v === null) throw new BookingError('Please check the payment details.');
                 $set[$name] = $v;
             }
+            if (array_key_exists('advanceOn', $in['payment'])) $set['pay_advance_on'] = Js::truthy($in['payment']['advanceOn']) ? '1' : '0';
+            if (array_key_exists('advanceType', $in['payment'])) {
+                if (!in_array($in['payment']['advanceType'], ['pct', 'amount'], true)) throw new BookingError('Choose a % of the total or a fixed amount for the advance.');
+                $set['pay_advance_type'] = $in['payment']['advanceType'];
+            }
             if (array_key_exists('advancePct', $in['payment'])) {
                 $v = self::int($in['payment']['advancePct'], 0, 100);
                 if ($v === null) throw new BookingError('The advance must be a percentage from 0 to 100.');
                 $set['pay_advance_pct'] = $v;
+            }
+            if (array_key_exists('advanceAmount', $in['payment'])) {
+                $v = self::int($in['payment']['advanceAmount'], 0, 100000000);
+                if ($v === null) throw new BookingError('The advance must be a whole amount of 0 or more.');
+                $set['pay_advance_amount'] = $v;
             }
         }
         Settings::set($set);
@@ -440,6 +696,23 @@ final class Bookings
         $busy = [];
         foreach ($occ as $n) $busy += $n['rooms'];
         return $busy;
+    }
+
+    /** [room id => booking ref] for rooms taken ([room id => booking id]), so staff see who has each room. */
+    public static function refsByRoom(array $busy): array
+    {
+        if (!$busy) return [];
+        $ids = array_values(array_unique(array_map('intval', $busy)));
+        $refs = array_column(Db::all('SELECT id, ref FROM bookings WHERE id IN (' . self::marks($ids) . ')', $ids), 'ref', 'id');
+        $out = [];
+        foreach ($busy as $roomId => $bookingId) $out[(int) $roomId] = (string) ($refs[$bookingId] ?? '');
+        return $out;
+    }
+
+    /** The rooms other bookings hold on any night of a stay: [room id => booking ref] (Admin → New booking's room picker). */
+    public static function takenRooms(string $checkIn, string $checkOut, int $exclude = 0): array
+    {
+        return self::refsByRoom(self::busyRooms(self::occupancy($checkIn, $checkOut, $exclude)));
     }
 
     /** Guests that can still be added on every night of $occ (null = no hotel limit). */
@@ -640,14 +913,15 @@ final class Bookings
 
     // ---------- price ----------
     /**
-     * Price a booking. A room is per night; a per-person option is per adult and per child
-     * per night (a day visit: per person). The party area and JBL speaker are per night (per
-     * day for a day visit). $rates: rates agreed with the guest ['room', 'adult', 'child'],
-     * null = the price list. Returns ['lines' => [['label', 'unit', 'list', 'detail', 'amount',
-     * 'stay'], …], 'stay' (the room charge, which coupons apply to), 'total'].
+     * Price a booking. A room is per night, at its price for the meal plan ($plan: RO, BB, HB, FB);
+     * a whole room category ($whole) is one price a night for all its rooms. A per-person option
+     * is per adult and per child per night (a day visit: per person). The party area and JBL
+     * speaker are per night (per day for a day visit). $rates: rates agreed with the guest
+     * ['room', 'adult', 'child'], null = the price list. Returns ['lines' => [['label', 'unit',
+     * 'list', 'detail', 'amount', 'stay'], …], 'stay' (the room charge, which coupons apply to), 'total'].
+     * $rooms: every room of a room booking that holds several (else $room is its one room).
      */
-    /** $rooms: every room of a room booking that holds several (else $room is its one room). */
-    public static function quote(string $kind, ?array $room, ?array $pkg, int $nights, int $adults, int $children, bool $partyArea, bool $jblSpeaker, array $rates = [], array $rooms = []): array
+    public static function quote(string $kind, ?array $room, ?array $pkg, int $nights, int $adults, int $children, bool $partyArea, bool $jblSpeaker, array $rates = [], array $rooms = [], string $plan = 'RO', ?array $whole = null): array
     {
         $prices = self::prices();
         $count = fn (int $n, string $one, string $many) => $n . ' ' . ($n === 1 ? $one : $many);
@@ -656,14 +930,26 @@ final class Bookings
         if ($kind === 'event') return ['lines' => [], 'stay' => 0, 'total' => 0]; // an agreed price, typed in
         if ($kind === 'room') {
             $all = count($rooms) > 1 ? $rooms : ($room ? [$room] : []);
-            $list = self::roomsPrice($all);
+            $plan = isset(self::MEAL_PLANS[$plan]) ? $plan : 'RO';
+            $planName = ' · ' . self::MEAL_PLANS[$plan][0];
+            $list = self::roomsPrice($all, $plan, $whole);
             $nightsText = $count($nights, 'night', 'nights');
-            if (count($all) > 1 && ($rates['room'] ?? null) === null) {
-                foreach ($all as $r) $lines[] = $line($r['name'], $r['price'], $r['price'], $nightsText, $r['price'] * $nights, true);
+            $inWhole = fn (array $r) => $whole && ($r['categoryId'] ?? null) === $whole['id'];
+            if ((count($all) > 1 || $whole) && ($rates['room'] ?? null) === null) {
+                // the whole category at its one price, then any other rooms, each at its own
+                if ($whole) {
+                    $w = self::wholePrice($whole, $plan);
+                    $lines[] = $line(self::wholeName($whole) . $planName, $w, $w, implode(', ', array_column(array_filter($all, $inWhole), 'name')) . ' · ' . $nightsText, $w * $nights, true);
+                }
+                foreach ($all as $r) {
+                    if ($inWhole($r)) continue;
+                    $pr = self::planPrice($r, $plan);
+                    $lines[] = $line($r['name'] . $planName, $pr, $pr, $nightsText, $pr * $nights, true);
+                }
             } else {
                 // one room, or an agreed rate a night for all the rooms together
                 $rate = $rates['room'] ?? $list;
-                $lines[] = $line($all ? implode(', ', array_column($all, 'name')) : 'Room', $rate, $list, $nightsText, $rate * $nights, true);
+                $lines[] = $line(($all ? implode(', ', array_column($all, 'name')) : 'Room') . $planName, $rate, $list, $nightsText, $rate * $nights, true);
             }
             [$units, $per] = [$nights, $nightsText];
         } else {
@@ -689,12 +975,12 @@ final class Bookings
      * Rates agreed with the guest, from admin input (rateRoom, rateAdult, rateChild): an empty
      * value, or the price-list rate, means the price list. Returns only the rates that apply.
      */
-    private static function ratesInput(array $in, string $kind, ?array $room, ?array $pkg, array $cur, array $rooms = []): array
+    private static function ratesInput(array $in, string $kind, ?array $room, ?array $pkg, array $cur, array $rooms = [], string $plan = 'RO', ?array $whole = null): array
     {
         $out = ['room' => null, 'adult' => null, 'child' => null];
         $keys = $kind === 'room' ? ['room' => 'rateRoom'] : ['adult' => 'rateAdult', 'child' => 'rateChild'];
-        // several rooms: the room rate is a night for all of them together
-        $roomList = count($rooms) > 1 ? self::roomsPrice($rooms) : ($room['price'] ?? null);
+        // several rooms (or a whole category): the room rate is a night for all of them together
+        $roomList = count($rooms) > 1 || $whole ? self::roomsPrice($rooms ?: ($room ? [$room] : []), $plan, $whole) : ($room ? self::planPrice($room, $plan) : null);
         $list = ['room' => $roomList, 'adult' => $pkg['priceAdult'] ?? null, 'child' => $pkg['priceChild'] ?? null];
         foreach ($keys as $k => $field) {
             if (!array_key_exists($field, $in)) { $out[$k] = $cur[$k] ?? null; continue; }
@@ -748,14 +1034,25 @@ final class Bookings
     }
 
     /**
+     * SQL condition (on bookings b): the booking asks for an advance — its own amount, or
+     * Booking setup's rule when it has none. Reservations without one are never released or
+     * reminded to pay.
+     */
+    public static function advanceRequiredSql(): string
+    {
+        return self::advanceRule()['on'] ? '(b.advance_amount IS NULL OR b.advance_amount > 0)' : 'b.advance_amount > 0';
+    }
+
+    /**
      * Release reservations whose hold date has passed without an advance: they are cancelled,
      * so their dates are free again, with a note saying why. Runs on every API call (cheap).
-     * Returns the bookings released.
+     * Reservations that ask for no advance are never released. Returns the bookings released.
      */
     public static function releaseExpired(): array
     {
         $t = self::today();
         $rows = Db::all("SELECT id, ref, hold_until, admin_notes FROM bookings b WHERE b.status = 'pending' AND b.hold_until IS NOT NULL AND b.hold_until < ?
+            AND " . self::advanceRequiredSql() . "
             AND NOT EXISTS (SELECT 1 FROM pos_payments p WHERE p.booking_id = b.id AND p.voided_at IS NULL)", [$t]);
         $out = [];
         foreach ($rows as $r) {
@@ -884,9 +1181,48 @@ final class Bookings
         return array_values($rooms);
     }
 
-    /** How many guests these rooms sleep, and what they cost a night (price list). */
+    /** How many guests these rooms sleep, and what they cost a night (price list) with this meal plan. */
     private static function roomsCapacity(array $rooms): int { return array_sum(array_column($rooms, 'capacity')); }
-    private static function roomsPrice(array $rooms): int { return array_sum(array_column($rooms, 'price')); }
+    public static function roomsPrice(array $rooms, string $plan = 'RO', ?array $whole = null): int
+    {
+        $sum = $whole ? self::wholePrice($whole, $plan) : 0; // a whole category: one price for its rooms
+        foreach ($rooms as $r) if (!$whole || ($r['categoryId'] ?? null) !== $whole['id']) $sum += self::planPrice($r, $plan);
+        return $sum;
+    }
+
+    /** A whole category's price a night with this meal plan (0 = not offered), and its name ("Wooden Cabana — Whole Villa"). */
+    private static function wholePrice(array $cat, string $plan): int { return (int) ($cat['whole']['prices'][$plan] ?? 0); }
+    private static function wholeName(array $cat): string { return $cat['name'] . ' — ' . ($cat['whole']['label'] ?? 'whole'); }
+
+    /**
+     * A room booking taking a whole category (wholeCategory: the category's id): [category, rooms].
+     * Every room of the category joins the booking, first, then the other rooms given. Empty =
+     * [null, $rooms]: each room is priced on its own.
+     */
+    private static function wholeInput(mixed $v, array $rooms): array
+    {
+        if ($v === null || $v === '' || $v === false || $v === 0 || $v === '0') return [null, $rooms];
+        $cat = self::getCategory($v);
+        if (!$cat || !$cat['whole']) throw new BookingError('That whole-villa option is no longer offered — please choose rooms instead.');
+        $catRooms = self::categoryRooms($cat['id']);
+        if (!$catRooms) throw new BookingError(self::wholeName($cat) . ' has no rooms that can be booked.');
+        $all = [];
+        foreach (array_merge($catRooms, $rooms) as $r) $all[$r['id']] ??= $r;
+        if (count($all) > self::MAX_ROOMS) throw new BookingError('A booking can have up to ' . self::MAX_ROOMS . ' rooms — please contact us for more.');
+        return [$cat, array_values($all)];
+    }
+
+    /** Throw if a room (or the whole category) of a room booking has no price for this meal plan. */
+    private static function requirePlan(string $plan, array $rooms, ?array $whole): void
+    {
+        if ($plan === 'RO') return; // the room price itself
+        $name = self::MEAL_PLANS[$plan][0];
+        if ($whole && self::wholePrice($whole, $plan) <= 0) throw new BookingError(self::wholeName($whole) . " has no $name rate — please choose another meal plan.");
+        foreach ($rooms as $r) {
+            if ($whole && $r['categoryId'] === $whole['id']) continue;
+            if (self::planPrice($r, $plan) <= 0) throw new BookingError("{$r['name']} has no $name rate — please choose another meal plan.");
+        }
+    }
 
     /** A list of room ids from input (for assigning rooms to a group). */
     private static function roomIdList(mixed $v): array
@@ -924,8 +1260,10 @@ final class Bookings
      * any source/status, a custom total, optional guest email, rooms of their choice for a
      * group, and no hotel-capacity limit).
      * $in: kind (room | per_person | day_out), rooms (a room booking's rooms: ids or slugs) or
-     * roomId / room (one room), packageId, checkIn, checkOut, adults, children, partyArea,
-     * jblSpeaker, rooms (admin, per person: the group's room ids), guest details…
+     * roomId / room (one room), mealPlan (a room booking: RO | BB | HB | FB), wholeCategory (a
+     * room booking taking every room of a category at its whole price), packageId, checkIn,
+     * checkOut, adults, children, partyArea, jblSpeaker, rooms (admin, per person: the group's
+     * room ids), guest details…
      */
     public static function createBooking(array $in, bool $admin = false, string $adminUser = ''): array
     {
@@ -935,6 +1273,8 @@ final class Bookings
 
         $room = null;
         $rooms = []; // a room booking's rooms: the first is its main room (room_id)
+        $plan = 'RO';
+        $whole = null; // a whole room category, at its one price
         $checkIn = $in['checkIn'] ?? null;
         if ($kind === 'day_out' || $kind === 'event') {
             self::validateDayOut($checkIn, $admin);
@@ -944,8 +1284,15 @@ final class Bookings
             $checkOut = $in['checkOut'] ?? null;
             $nights = self::validateStay($checkIn, $checkOut, $admin);
             if ($kind === 'room') {
-                $rooms = self::roomsInput($in, $admin);
+                $wantWhole = $isBlock ? null : ($in['wholeCategory'] ?? null);
+                $noRooms = empty($in['rooms']) && empty($in['roomId']) && empty($in['room']);
+                $rooms = $wantWhole && $noRooms ? [] : self::roomsInput($in, $admin); // a whole category needs no rooms named
+                [$whole, $rooms] = self::wholeInput($wantWhole, $rooms);
                 $room = $rooms[0];
+                if (!$isBlock) {
+                    $plan = self::planOf($in['mealPlan'] ?? null);
+                    self::requirePlan($plan, $rooms, $whole);
+                }
             }
         }
         [$adults, $children] = self::guestCounts($in, $kind, $rooms, $isBlock);
@@ -975,17 +1322,19 @@ final class Bookings
         $status = 'pending';
         if ($admin) $status = in_array($in['status'] ?? null, self::STATUSES, true) ? $in['status'] : 'confirmed';
         if ($isBlock) $status = 'confirmed';
-        // a reservation waits a few days for its advance, then its dates are released
+        // the booking's own advance (staff; null = Booking setup's rule, 0 = none)
+        $ownAdvance = $admin && !$isBlock && array_key_exists('advanceAmount', $in) ? self::advanceInput($in['advanceAmount']) : null;
+        // a reservation waits a few days for its advance, then its dates are released (one that asks for no advance isn't held)
         $holdUntil = null;
-        if ($status === 'pending' && !$isBlock) {
+        if ($status === 'pending' && !$isBlock && self::advanceOf(0, $ownAdvance)['required']) {
             $holdUntil = $admin && array_key_exists('holdUntil', $in) ? self::holdInput($in['holdUntil']) : self::defaultHold($checkIn);
         }
 
         // rates agreed with the guest (admins), commission, and a coupon off the room charge
-        $rates = $admin && !$isBlock && $kind !== 'event' ? self::ratesInput($in, $kind, $room, $pkg, [], $rooms) : ['room' => null, 'adult' => null, 'child' => null];
+        $rates = $admin && !$isBlock && $kind !== 'event' ? self::ratesInput($in, $kind, $room, $pkg, [], $rooms, $plan, $whole) : ['room' => null, 'adult' => null, 'child' => null];
         $commission = $admin && !$isBlock ? self::commissionInput($in, []) : ['type' => '', 'value' => 0, 'to' => ''];
         $coupon = $isBlock ? '' : Coupons::normalize($in['couponCode'] ?? '');
-        $quote = self::quote($kind, $room, $pkg, $nights, $adults, $children, $partyArea, $jblSpeaker, $rates, $rooms);
+        $quote = self::quote($kind, $room, $pkg, $nights, $adults, $children, $partyArea, $jblSpeaker, $rates, $rooms, $plan, $whole);
         $total = $quote['total'];
         if ($admin && array_key_exists('totalAmount', $in) && $in['totalAmount'] !== '' && $in['totalAmount'] !== null) {
             $t = self::int($in['totalAmount'], 0, 100000000);
@@ -1001,6 +1350,8 @@ final class Bookings
             'package' => $kind,
             'package_id' => $pkg ? $pkg['id'] : null,
             'package_name' => $pkg ? $pkg['name'] : '',
+            'meal_plan' => $kind === 'room' && !$isBlock ? $plan : '',
+            'whole_category_id' => $whole ? $whole['id'] : null,
             'check_in' => $checkIn,
             'check_out' => $checkOut,
             'nights' => $nights,
@@ -1025,6 +1376,7 @@ final class Bookings
             'commission_value' => $commission['value'],
             'commission_to' => $commission['to'],
             'hold_until' => $holdUntil,
+            'advance_amount' => $ownAdvance,
             'event_slot' => $eventSlot,
             'event_others' => $eventOthers,
             'status' => $status,
@@ -1113,6 +1465,7 @@ final class Bookings
         $dayChanged = $oneDay($kind) !== $oneDay($cur['kind']);
 
         // ---- room / rooms ----
+        $whole = null; // a room booking that takes a whole category
         $roomId = $cur['roomId'];
         $groupRooms = in_array($cur['kind'], ['per_person', 'event'], true) ? array_column($cur['rooms'], 'id') : [];
         // a room booking's rooms (several are kept in booking_rooms, like a group's)
@@ -1133,6 +1486,16 @@ final class Bookings
                 if ($at === false) $roomIds = [$room['id']]; else $roomIds[$at] = $room['id'];
                 $roomIds = array_values(array_unique($roomIds));
                 $main = $room['id'];
+            }
+            // a whole category: choosing it adds all its rooms; it stays while the booking has them all
+            $wantWhole = $isBlock ? null : (array_key_exists('wholeCategory', $patch) ? $patch['wholeCategory'] : $cur['wholeCategoryId']);
+            if ($wantWhole && array_key_exists('wholeCategory', $patch)) {
+                [$whole, $merged] = self::wholeInput($wantWhole, array_values(array_filter(array_map(fn ($i) => self::getRoom($i), $roomIds))));
+                $roomIds = array_column($merged, 'id');
+            } elseif ($wantWhole) {
+                $cat = self::getCategory($wantWhole);
+                $catIds = $cat && $cat['whole'] ? array_column(self::categoryRooms($cat['id']), 'id') : [];
+                if ($catIds && !array_diff($catIds, $roomIds)) $whole = $cat; // else a room of it left: priced room by room
             }
             if (!$roomIds) throw new BookingError('Please choose a room for this booking.');
             // the room chosen as main room, else the main room stays while the booking still has it
@@ -1158,6 +1521,20 @@ final class Bookings
             // a room booking with several rooms becoming something else: its rooms go with it
             if (count($curRoomIds) > 1 && !$saveRooms && !$needAlloc) { $groupRooms = []; $saveRooms = true; }
         }
+
+        // ---- meal plan and whole category (room bookings) ----
+        $plan = $cur['mealPlan'] ?: 'RO';
+        if ($kind === 'room' && !$isBlock) {
+            if (array_key_exists('mealPlan', $patch)) {
+                $want = self::planOf($patch['mealPlan']);
+                if ($want !== $plan) { $plan = $want; $sets['meal_plan'] = $want; }
+            }
+        } elseif ($cur['mealPlan'] !== '') {
+            $plan = 'RO';
+            $sets['meal_plan'] = '';
+        }
+        $wholeId = $whole ? $whole['id'] : null;
+        if ($wholeId !== $cur['wholeCategoryId']) $sets['whole_category_id'] = $wholeId;
 
         // ---- dates ----
         $checkIn = $cur['checkIn'];
@@ -1248,8 +1625,10 @@ final class Bookings
         // ---- rates agreed with the guest (a different option, kind or set of rooms starts from the price list) ----
         $room = $roomId === null ? null : self::getRoom($roomId);
         $roomList = $kind === 'room' ? array_values(array_filter(array_map(fn ($i) => self::getRoom($i), $roomIds))) : [];
-        $whatChanged = $kind !== $cur['kind'] || ($pkg['id'] ?? null) !== $cur['packageId'] || ($roomsChanged && (count($roomIds) > 1 || count($curRoomIds) > 1));
-        $rates = $isBlock || $kind === 'event' ? ['room' => null, 'adult' => null, 'child' => null] : self::ratesInput($patch, $kind, $room, $pkg, $whatChanged ? [] : $cur['rates'], $roomList);
+        $whatChanged = $kind !== $cur['kind'] || ($pkg['id'] ?? null) !== $cur['packageId'] || ($roomsChanged && (count($roomIds) > 1 || count($curRoomIds) > 1))
+            || isset($sets['meal_plan']) || array_key_exists('whole_category_id', $sets);
+        if ($kind === 'room' && !$isBlock && ($roomsChanged || isset($sets['meal_plan']) || array_key_exists('whole_category_id', $sets))) self::requirePlan($plan, $roomList, $whole);
+        $rates = $isBlock || $kind === 'event' ? ['room' => null, 'adult' => null, 'child' => null] : self::ratesInput($patch, $kind, $room, $pkg, $whatChanged ? [] : $cur['rates'], $roomList, $plan, $whole);
         foreach (['room' => 'rate_room', 'adult' => 'rate_adult', 'child' => 'rate_child'] as $k => $col) {
             if ($rates[$k] !== $cur['rates'][$k]) $sets[$col] = $rates[$k];
         }
@@ -1262,13 +1641,23 @@ final class Bookings
             }
         }
 
-        // ---- how long a reservation waits for its advance ----
+        // ---- the booking's own advance (null = Booking setup's rule, 0 = none, more = that amount) ----
+        $own = $cur['advance']['own'];
+        if (!$isBlock && array_key_exists('advanceAmount', $patch)) {
+            $own = self::advanceInput($patch['advanceAmount']);
+            if ($own !== $cur['advance']['own']) $sets['advance_amount'] = $own;
+        }
+        $needsAdvance = self::advanceOf(0, $own)['required'];
+
+        // ---- how long a reservation waits for its advance (one that asks for none isn't held) ----
         if ($status === 'pending' && !$isBlock) {
-            if (array_key_exists('holdUntil', $patch)) {
+            if (!$needsAdvance) {
+                if ($cur['holdUntil'] !== null) $sets['hold_until'] = null;
+            } elseif (array_key_exists('holdUntil', $patch)) {
                 $h = ($patch['holdUntil'] ?? '') === $cur['holdUntil'] ? $cur['holdUntil'] : self::holdInput($patch['holdUntil']);
                 if ($h !== $cur['holdUntil']) $sets['hold_until'] = $h;
-            } elseif ($cur['status'] !== 'pending') {
-                $sets['hold_until'] = self::defaultHold($checkIn); // back to a reservation: it waits again
+            } elseif ($cur['status'] !== 'pending' || !$cur['advance']['required']) {
+                $sets['hold_until'] = self::defaultHold($checkIn); // back to a reservation, or it now asks for an advance: it waits again
             }
         }
 
@@ -1277,10 +1666,10 @@ final class Bookings
             $v = self::int($patch['totalAmount'], 0, 100000000);
             if ($v === null) throw new BookingError('Total amount must be a whole number.');
             $sets['total_amount'] = $v;
-        } elseif (($roomsChanged || array_intersect(array_merge(['package', 'package_id', 'room_id', 'nights', 'party_area', 'jbl_speaker', 'rate_room', 'rate_adult', 'rate_child'], $kind === 'room' ? [] : ['adults', 'children']), array_keys($sets))) && !$isBlock && $kind !== 'event') {
+        } elseif (($roomsChanged || array_intersect(array_merge(['package', 'package_id', 'room_id', 'nights', 'party_area', 'jbl_speaker', 'rate_room', 'rate_adult', 'rate_child', 'meal_plan', 'whole_category_id'], $kind === 'room' ? [] : ['adults', 'children']), array_keys($sets))) && !$isBlock && $kind !== 'event') {
             // (a party keeps its agreed price)
             // what is being priced changed and no explicit total: re-price (a room's price doesn't depend on its guests)
-            $q = self::quote($kind, $room, $pkg, $sets['nights'] ?? $cur['nights'], $adults, $children, $partyArea, $jbl, $rates, $roomList);
+            $q = self::quote($kind, $room, $pkg, $sets['nights'] ?? $cur['nights'], $adults, $children, $partyArea, $jbl, $rates, $roomList, $plan, $whole);
             $total = $q['total'];
             if ($cur['couponCode'] !== '') {
                 // the coupon used when booking comes off the new room charge
@@ -1369,14 +1758,24 @@ final class Bookings
         $kind = array_key_exists($b['package'], self::KINDS) ? $b['package'] : 'room';
         // a room booking's rooms: several (booking_rooms) or its one room; a group's or party's rooms
         $rooms = $kind === 'room' && count($groupRooms) > 1 ? $groupRooms : ($b['room_id'] !== null
-            ? [['id' => (int) $b['room_id'], 'name' => $b['room_name'], 'capacity' => (int) $b['room_capacity'], 'price' => (int) $b['room_price']]]
+            ? [['id' => (int) $b['room_id'], 'name' => $b['room_name'], 'capacity' => (int) $b['room_capacity'], 'price' => (int) $b['room_price'],
+                'prices' => self::planPrices($b, 'room_'), 'categoryId' => self::intOrNull($b['room_category_id'] ?? null)]]
             : $groupRooms);
+        // a room booking's meal plan (none for blocked dates), and a whole category taken at its one price
+        $plan = $kind === 'room' && $b['source'] !== 'block' ? ((string) ($b['meal_plan'] ?? '') ?: 'RO') : '';
+        if ($plan !== '' && !isset(self::MEAL_PLANS[$plan])) $plan = 'RO';
+        $whole = $kind === 'room' && ($b['whole_category_id'] ?? null) !== null && ($b['whole_label'] ?? null) !== null ? self::mapCategory([
+            'id' => $b['whole_category_id'], 'name' => $b['whole_cat_name'], 'sort' => 0, 'whole_code' => $b['whole_code'], 'whole_label' => $b['whole_label'] ?: 'Whole',
+            'whole_pax' => $b['whole_pax'], 'whole_ro' => $b['whole_ro'], 'whole_bb' => $b['whole_bb'], 'whole_hb' => $b['whole_hb'], 'whole_fb' => $b['whole_fb'],
+        ]) : null;
         $packageName = $b['package_name'] !== '' ? $b['package_name'] : self::KINDS[$kind];
         $label = $kind === 'room' ? 'Room' : $packageName;
         $slot = $kind === 'event' ? ((string) ($b['event_slot'] ?? '') ?: 'night') : '';
         $others = $kind === 'event' ? ((string) ($b['event_others'] ?? '') ?: 'open') : '';
         if ($kind === 'event') $label = self::EVENT_SLOTS[$slot] ?? 'Outdoor party';
         $roomNames = implode(', ', array_column($rooms, 'name'));
+        // "Room 101, Room 102 · Half board" or "Wooden Cabana — Whole Villa (Room 103, …) · Full board"
+        $roomPlace = ($whole ? self::wholeName($whole) . " ($roomNames)" : $roomNames) . ($plan !== '' ? ' · ' . self::MEAL_PLANS[$plan][0] : '');
         $commission = self::commissionOf((string) ($b['commission_type'] ?? ''), (int) ($b['commission_value'] ?? 0), (string) ($b['commission_to'] ?? ''), (int) $b['total_amount']);
         // what the agent already kept from payments they passed on (the "kept" on each payment), and what is left to pay them
         $commission['kept'] = $commission['type'] !== '' ? (int) ($b['fees_kept'] ?? 0) : 0;
@@ -1390,7 +1789,11 @@ final class Bookings
             'packageName' => $kind === 'room' ? '' : $packageName,
             'packageLabel' => $label,
             // "Room 101", "Full board · Room 101, Room 102" or "Day out"
-            'place' => $kind === 'room' ? ($roomNames !== '' ? $roomNames : (string) $b['room_name']) : ($kind === 'day_out' ? $label : $label . ($roomNames !== '' ? " · $roomNames" : '')),
+            'place' => $kind === 'room' ? ($roomNames !== '' ? $roomPlace : (string) $b['room_name']) : ($kind === 'day_out' ? $label : $label . ($roomNames !== '' ? " · $roomNames" : '')),
+            'mealPlan' => $plan, // a room booking: RO | BB | HB | FB ('' otherwise)
+            'mealPlanLabel' => $plan !== '' ? self::MEAL_PLANS[$plan][0] : '',
+            'wholeCategoryId' => $whole ? $whole['id'] : self::intOrNull($b['whole_category_id'] ?? null),
+            'wholeCategory' => $whole ? ['id' => $whole['id'], 'name' => $whole['name'], 'label' => $whole['whole']['label'], 'code' => $whole['whole']['code'], 'capacity' => $whole['whole']['capacity']] : null,
             'roomId' => $b['room_id'] === null ? null : (int) $b['room_id'],
             'roomName' => $roomNames !== '' ? $roomNames : null,
             'roomType' => $b['room_type'],
@@ -1416,13 +1819,15 @@ final class Bookings
             'rates' => ['room' => self::intOrNull($b['rate_room'] ?? null), 'adult' => self::intOrNull($b['rate_adult'] ?? null), 'child' => self::intOrNull($b['rate_child'] ?? null)],
             // several rooms: the room rate is a night for all of them together
             'listRates' => $kind === 'room'
-                ? ['room' => count($rooms) > 1 ? self::roomsPrice($rooms) : self::intOrNull($b['room_price'] ?? null), 'adult' => null, 'child' => null]
+                ? ['room' => count($rooms) > 1 || $whole ? self::roomsPrice($rooms, $plan ?: 'RO', $whole) : ($rooms ? self::planPrice($rooms[0], $plan ?: 'RO') : null), 'adult' => null, 'child' => null]
                 : ['room' => null, 'adult' => self::intOrNull($b['pkg_price_adult'] ?? null), 'child' => self::intOrNull($b['pkg_price_child'] ?? null)],
             'couponCode' => (string) ($b['coupon_code'] ?? ''),
             'couponDiscount' => (int) ($b['coupon_discount'] ?? 0),
             'commission' => $commission,
             'netAmount' => (int) $b['total_amount'] - $commission['amount'], // what the resort keeps of the stay price
             'holdUntil' => ($b['hold_until'] ?? null) ?: null,
+            // the advance it asks for before arrival (advanceOf): its own amount, or Booking setup's rule
+            'advance' => $b['source'] === 'block' ? self::advanceOf(0, 0) : self::advanceOf((int) $b['total_amount'], self::intOrNull($b['advance_amount'] ?? null)),
             // an outdoor party: when, and what other guests can book then
             'eventSlot' => $slot, 'eventOthers' => $others, 'eventOthersLabel' => $others !== '' ? self::EVENT_OTHERS[$others] : '',
             'status' => $b['status'],
@@ -1442,17 +1847,20 @@ final class Bookings
         if (!$rows) return [];
         $ids = array_map(fn ($r) => (int) $r['id'], $rows);
         $group = [];
-        foreach (Db::all('SELECT br.booking_id, r.id, r.name, r.capacity, r.price FROM booking_rooms br JOIN rooms r ON r.id = br.room_id
+        foreach (Db::all('SELECT br.booking_id, r.id, r.name, r.capacity, r.price, r.price_bb, r.price_hb, r.price_fb, r.category_id FROM booking_rooms br JOIN rooms r ON r.id = br.room_id
             WHERE br.booking_id IN (' . self::marks($ids) . ') ORDER BY r.sort, r.id', $ids) as $x) {
-            $group[(int) $x['booking_id']][] = ['id' => (int) $x['id'], 'name' => $x['name'], 'capacity' => (int) $x['capacity'], 'price' => (int) $x['price']];
+            $group[(int) $x['booking_id']][] = ['id' => (int) $x['id'], 'name' => $x['name'], 'capacity' => (int) $x['capacity'], 'price' => (int) $x['price'],
+                'prices' => self::planPrices($x), 'categoryId' => self::intOrNull($x['category_id'])];
         }
         return array_map(fn ($r) => self::mapBooking($r, $group[(int) $r['id']] ?? []), $rows);
     }
 
     private const BOOKING_SELECT = 'SELECT b.*, r.name AS room_name, r.type AS room_type, r.slug AS room_slug, r.capacity AS room_capacity, r.price AS room_price,
+        r.price_bb AS room_price_bb, r.price_hb AS room_price_hb, r.price_fb AS room_price_fb, r.category_id AS room_category_id,
         p.price_adult AS pkg_price_adult, p.price_child AS pkg_price_child,
+        c.name AS whole_cat_name, c.whole_code, c.whole_label, c.whole_pax, c.whole_ro, c.whole_bb, c.whole_hb, c.whole_fb,
         (SELECT COALESCE(SUM(pp.fee), 0) FROM pos_payments pp WHERE pp.booking_id = b.id AND pp.voided_at IS NULL) AS fees_kept
-        FROM bookings b LEFT JOIN rooms r ON r.id = b.room_id LEFT JOIN packages p ON p.id = b.package_id';
+        FROM bookings b LEFT JOIN rooms r ON r.id = b.room_id LEFT JOIN packages p ON p.id = b.package_id LEFT JOIN room_categories c ON c.id = b.whole_category_id';
 
     /**
      * The commission an agent or website earns on a booking: ['type' => ''|percent|amount, 'value', 'to', 'amount'].
@@ -1490,7 +1898,10 @@ final class Bookings
         $room = $b['roomId'] ? self::getRoom($b['roomId']) : null;
         $rooms = $b['kind'] === 'room' ? array_values(array_filter(array_map(fn ($r) => self::getRoom($r['id']), $b['rooms']))) : [];
         $pkg = $b['packageId'] ? self::getPackage($b['packageId']) : null;
-        $q = self::quote($b['kind'], $room, $pkg, $b['nights'], $b['adults'], $b['children'], $b['partyArea'], $b['jblSpeaker'], $b['rates'], $rooms);
+        // a whole category keeps its price even if its whole option was turned off since
+        $cat = $b['wholeCategory'] ? self::getCategory($b['wholeCategoryId']) : null;
+        $whole = $cat && !$cat['whole'] ? ['whole' => ['code' => '', 'label' => 'Whole', 'capacity' => 0, 'prices' => $cat['wholePrices']]] + $cat : $cat;
+        $q = self::quote($b['kind'], $room, $pkg, $b['nights'], $b['adults'], $b['children'], $b['partyArea'], $b['jblSpeaker'], $b['rates'], $rooms, $b['mealPlan'] ?: 'RO', $whole);
         $gross = $b['totalAmount'] + $b['couponDiscount'];
         if ($q['total'] === $gross && ($b['kind'] !== 'room' || $room)) return $q['lines'];
         $when = $b['kind'] === 'day_out' ? '1 day' : $b['nights'] . ' night' . ($b['nights'] === 1 ? '' : 's');

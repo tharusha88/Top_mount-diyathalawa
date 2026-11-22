@@ -112,7 +112,7 @@
     if (!v) { console.warn('[media] unknown video key:', key); return; }
     const box = el.getBoundingClientRect();
     const tall = box.height > box.width * 1.1;
-    const posterKey = (tall && v.posterPortrait) || v.poster;
+    let posterKey = (tall && v.posterPortrait) || v.poster;
     if (posterKey) el.insertAdjacentHTML('afterbegin', picture(posterKey, {
       sizes: el.dataset.sizes || '100vw', eager: el.hasAttribute('data-eager'),
       priority: el.hasAttribute('data-priority'), alt: ''
@@ -135,12 +135,14 @@
     // without autoplay, only the play button starts the video, and it is on screen when pressed
     let visible = !allowAuto;
     const play = () => { if (video.dataset.src && visible && !el.dataset.paused) video.play().catch(() => {}); };
+    let chosen = null, useAv1 = false; // the clip playing, and whether AV1 plays smoothly here
     const load = () => {
       if (video.dataset.loaded) return;
       video.dataset.loaded = '1';
       Promise.all([pageLoaded, checkAv1()]).then(([, av1]) => {
         const s = videoSource(key, el, av1, true);
         if (!s) return;
+        chosen = s; useAv1 = av1;
         video.addEventListener('playing', () => el.classList.add('is-playing'), { once: true });
         video.dataset.src = s.src;
         video.src = s.src;
@@ -149,6 +151,37 @@
       });
     };
     el.tmrLoad = load;
+
+    // The window changed shape (a phone turned, a window resized, devtools' device mode switched off):
+    // the poster and the clip follow it, so a portrait clip is never stretched across a wide screen
+    // (the portrait clip is 608 px wide). The loop carries on from the same moment.
+    el.tmrRefit = () => {
+      const w = el.offsetWidth, h = el.offsetHeight;
+      if (!w || !h) return;
+      const want = (h > w * 1.1 && v.posterPortrait) || v.poster;
+      if (want && want !== posterKey) {
+        const old = el.querySelector(':scope > picture');
+        el.insertAdjacentHTML('afterbegin', picture(want, { sizes: el.dataset.sizes || '100vw', eager: true, alt: '' }));
+        if (old) old.remove();
+        posterKey = want;
+        const pos = M.images[want] && M.images[want].pos;
+        video.style.objectPosition = pos || '';
+      }
+      if (!chosen) return; // not loaded yet: load() picks for the shape it finds then
+      const s = videoSource(key, el, useAv1, true);
+      if (!s || s.src === chosen.src) return;
+      const turned = (s.role === 'portrait') !== (chosen.role === 'portrait');
+      if (!turned && s.w <= chosen.w) return; // a smaller window keeps the sharper clip it has
+      const at = video.currentTime;
+      const wasPlaying = !video.paused;
+      chosen = s;
+      video.addEventListener('loadedmetadata', () => {
+        if (at && video.duration) video.currentTime = at % video.duration;
+        if (wasPlaying) play();
+      }, { once: true });
+      video.dataset.src = s.src;
+      video.src = s.src;
+    };
 
     if (!allowAuto) { el.classList.add('is-static'); return; }
     // load when near, play only while visible
@@ -201,6 +234,13 @@
       watched.add(group); deferIO.observe(group);
     });
   };
+
+  // background videos follow the window's shape (see tmrRefit above), once it has settled
+  let refitTimer = 0;
+  addEventListener('resize', () => {
+    clearTimeout(refitTimer);
+    refitTimer = setTimeout(() => document.querySelectorAll('[data-video]').forEach(el => el.tmrRefit && el.tmrRefit()), 250);
+  });
 
   const hydrate = (root = document) => {
     root.querySelectorAll('[data-img]:not([data-hydrated])').forEach(el => { el.dataset.hydrated = '1'; fillImage(el); });

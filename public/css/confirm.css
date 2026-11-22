@@ -1,0 +1,11 @@
+/* The guest's confirmation page (views/confirm.html): the booking page's look (book.css), plus the
+   "Needed" mark on details staff couldn't fill in, and what to pay under the total. */
+.cf-need { display: inline-block; margin-left: 4px; padding: 2px 8px; border-radius: 999px; background: #fbe3c4; color: #7a4b07; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; vertical-align: 1px; }
+.bk-panel__head .cf-need { margin-left: 0; }
+.field.is-needed input, .field.is-needed select { border-color: #e8a33d; box-shadow: 0 0 0 3px rgba(232, 163, 61, 0.18); }
+.field.has-error input, .field.has-error select { border-color: #c4542a; box-shadow: 0 0 0 3px rgba(196, 84, 42, 0.15); }
+.cf-due { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; margin-top: 12px; padding: 12px 14px; border-radius: 6px; background: rgba(232, 163, 61, 0.16); font-size: 0.88rem; }
+.cf-due span { color: rgba(247, 245, 239, 0.75); }
+.cf-due b { text-align: right; color: var(--amber-300); }
+.confirm-page [data-submit].is-busy { opacity: 0.7; pointer-events: none; }
+.confirm-page .bk-done .bk-actions .btn svg { margin-right: 4px; }

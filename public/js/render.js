@@ -43,7 +43,7 @@
   $$('[data-contact="address"]').forEach(el => { el.innerHTML = ct.address.map(esc).join('<br>'); });
   $$('[data-contact="maps"]').forEach(a => { a.href = ct.mapsUrl; });
   $$('[data-contact="whatsapp"]').forEach(a => {
-    if (!ct.whatsapp) { (a.closest('.foot__actions > li') || a).remove(); return; }
+    if (!ct.whatsapp) { a.remove(); return; }
     a.href = `https://wa.me/${ct.whatsapp}`;
   });
   $$('[data-contact="socials"]').forEach(el => {
@@ -94,8 +94,6 @@
     </li>`;
   }).join(''));
   $$('[data-render="rooms-total"]').forEach(el => { el.textContent = rooms.length; });
-
-  into('foot-stays', C.stays.map(s => `<li><a href="#stay">${esc(s.name)}</a></li>`).join(''));
 
   // booking select
   $$('[data-render="stay-options"]').forEach(sel => {

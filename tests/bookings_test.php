@@ -248,7 +248,7 @@ test('the party area takes one group per night, and room bookers are told', func
 test('setup is validated and saved', function () use ($room) {
     $s = B::saveSetup(['labels' => ['room' => 'Choose a room', 'person' => 'Per person'], 'payment' => ['bank' => 'BOC', 'accountName' => 'Yodhaara', 'accountNo' => '0012345', 'advancePct' => 50]]);
     eq([$s['labels']['room'], $s['payment']['accountNo'], $s['payment']['advancePct']], ['Choose a room', '0012345', 50]);
-    eq(B::advanceDue(10001), 5001);
+    eq(B::advanceOf(10001)['amount'], 5001);
     throws(fn () => B::saveSetup(['labels' => ['room' => '']]), '/cannot be empty/');
     throws(fn () => B::saveSetup(['payment' => ['advancePct' => 120]]), '/percentage/');
     throws(fn () => B::saveSetup(['priority' => [999]]), '/no longer exists/');
@@ -357,7 +357,7 @@ test('several guests on one bill; voiding a bill reopens their room bills', func
     Pos::addCharges($C['id'], [['itemId' => $itemId('Coffee'), 'qty' => 2]], 'cashier');
     // the service charge can be left off a bill
     $bill = Pos::checkout([$Bk['id'], $C['id']], ['serviceCharge' => false, 'payments' => [['amount' => 101800, 'method' => 'cash']]], 'cashier');
-    eq([$bill['stayTotal'], $bill['itemsTotal'], $bill['serviceCharge'], $bill['balance'], $bill['places']], [100000, 1800, 0, 0, ['Mara Pool Villa', 'Hora Pool Villa']]);
+    eq([$bill['stayTotal'], $bill['itemsTotal'], $bill['serviceCharge'], $bill['balance'], $bill['places']], [100000, 1800, 0, 0, ['Mara Pool Villa · Room only', 'Hora Pool Villa · Room only']]);
     $void = Pos::voidBill($bill['id'], 'Guest is staying one more night', 'manager');
     eq([$void['status'], B::getBooking($C['id'])['status'], Pos::folio($Bk['id'])['totals']['paid']], ['void', 'checked_in', 101800]);
     throws(fn () => Pos::voidBill($bill['id'], 'again', 'x'), 'code:void');
@@ -405,21 +405,92 @@ test('the home page contact details are edited in Admin → Website', function (
     eq(Ydr\Site::info()['phone'], $env['phone']);
 });
 
-test('a confirmed booking queues a WhatsApp alert; without an API key it waits in the outbox', function () use ($guest, $d) {
-    eq(Ydr\Whatsapp::admin()['phone'], '94777368264', 'the number to alert (the hotline)');
-    $b = B::createBooking($guest + ['room' => 'kitul-canopy-cabin', 'checkIn' => $d(510), 'checkOut' => $d(512)]);
-    $b = B::confirmBooking($b['id'], []);
-    Ydr\Whatsapp::bookingConfirmed($b);
-    eq(Ydr\Whatsapp::hasQueue(), true);
+test('WhatsApp alerts go to every number on the list, for new website bookings and confirmations', function () use ($guest, $d) {
+    $outbox = fn (string $has) => array_values(array_filter(glob(Ydr\Config::get()['dataDir'] . '/outbox/*-whatsapp-*.txt') ?: [], fn ($f) => str_contains((string) file_get_contents($f), $has)));
+    $w = Ydr\Whatsapp::admin();
+    eq([count($w['numbers']), $w['numbers'][0]['phone'], $w['numbers'][0]['hasKey']], [1, '94777368264', false], 'until a list is saved: the hotline, as before');
+    // several numbers, each with its own CallMeBot key
+    $w = Ydr\Whatsapp::save(['numbers' => [
+        ['id' => 'main', 'name' => 'Hotline', 'phone' => '+94 77 736 8264'],
+        ['name' => 'Owner', 'phone' => '0712345678', 'apiKey' => 'abc1234'],
+        ['name' => '', 'phone' => '', 'apiKey' => ''], // a row left empty
+    ]]);
+    eq(array_map(fn ($n) => [$n['name'], $n['phone'], $n['keyHint']], $w['numbers']), [['Hotline', '94777368264', ''], ['Owner', '94712345678', '••••234']]);
+    eq($w['numbers'][0]['id'], 'main', 'a saved number keeps its id');
+    if (str_contains(json_encode($w), 'abc1234')) throw new Exception('the API key was sent back in full');
+    eq(Ydr\Whatsapp::enabled(), true, 'one number has its key');
+    $owner = $w['numbers'][1]['id'];
+    eq(Ydr\Whatsapp::save(['numbers' => [['id' => $owner, 'name' => 'Owner', 'phone' => '94712345678']]])['numbers'][0]['hasKey'], true, 'the key is kept when left empty');
+    eq(Ydr\Whatsapp::save(['numbers' => [['id' => $owner, 'name' => 'Owner', 'phone' => '94712345678', 'removeKey' => true]]])['numbers'][0]['hasKey'], false, 'or removed');
+    Ydr\Whatsapp::save(['numbers' => [['id' => $owner, 'name' => 'Owner', 'phone' => '94712345678', 'apiKey' => 'abc1234']]]);
+    eq(Ydr\Whatsapp::save(['numbers' => [['id' => $owner, 'name' => 'Owner', 'phone' => '94719999999']]])['numbers'][0]['hasKey'], false, 'a key belongs to its phone');
+    eq(Ydr\Whatsapp::enabled(), false);
+    throws(fn () => Ydr\Whatsapp::save(['numbers' => [['phone' => '12']]]), '/country code/');
+    throws(fn () => Ydr\Whatsapp::save(['numbers' => [['phone' => '94777368264'], ['phone' => '0777368264']]]), '/twice/');
+    throws(fn () => Ydr\Whatsapp::save(['numbers' => [['phone' => '94777368264', 'apiKey' => 'bad key!']]]), '/does not look right/');
+    throws(fn () => Ydr\Whatsapp::save(['numbers' => array_map(fn ($i) => ['phone' => '9477000' . str_pad((string) $i, 4, '0', STR_PAD_LEFT)], range(1, 11))]), '/Up to 10/');
+    throws(fn () => Ydr\Whatsapp::save(['numbers' => '94777368264']), '/list/');
+
+    // without keys, every number's alert waits in the outbox
+    Ydr\Whatsapp::save(['numbers' => [['name' => 'Hotline', 'phone' => '94777368264'], ['name' => 'Manager', 'phone' => '94770000001']]]);
+    $b = B::createBooking($guest + ['room' => 'kitul-canopy-cabin', 'checkIn' => $d(510), 'checkOut' => $d(512), 'specialRequests' => "Late arrival\nVegetarian"]);
     $r = Ydr\Whatsapp::send("Test alert {$b['ref']}");
-    if (empty($r['outbox']) || !str_contains((string) file_get_contents($r['outbox']), $b['ref'])) throw new Exception('not saved to the outbox');
+    eq(array_map(fn ($x) => [$x['phone'], isset($x['outbox'])], $r['results']), [['94777368264', true], ['94770000001', true]]);
+    eq(count($outbox("Test alert {$b['ref']}")), 2, 'one message per number');
+    eq(array_column(Ydr\Whatsapp::send('Just the manager', true, $r['results'][1]['id'])['results'], 'phone'), ['94770000001'], 'a test can go to one number');
+    // a guest books on the website
+    Ydr\Whatsapp::newBooking($b);
+    eq(Ydr\Whatsapp::hasQueue(), true, 'a new website booking queues an alert');
     Ydr\Whatsapp::flushQueue();
     eq(Ydr\Whatsapp::hasQueue(), false);
-    throws(fn () => Ydr\Whatsapp::save(['phone' => '12']), '/country code/');
-    eq(Ydr\Whatsapp::save(['apiKey' => 'abc1234'])['keyHint'], '••••234');
-    eq(Ydr\Whatsapp::enabled(), true);
-    Ydr\Whatsapp::save(['removeKey' => true]);
-    eq(Ydr\Whatsapp::enabled(), false);
+    $sent = $outbox("New booking request* — {$b['ref']}");
+    eq(count($sent), 2, 'the new booking reached both numbers');
+    $text = (string) file_get_contents($sent[0]);
+    foreach (['Test Guest', '+94 77 123 4567', 'guest@example.com', 'Late arrival Vegetarian', 'Waiting for your confirmation', "/admin/#/bookings/{$b['id']}"] as $want) {
+        if (!str_contains($text, $want)) throw new Exception("the new booking alert lacks \"$want\"");
+    }
+    // staff confirm it
+    $b = B::confirmBooking($b['id'], []);
+    Ydr\Whatsapp::bookingConfirmed($b);
+    Ydr\Whatsapp::flushQueue();
+    eq(count($outbox("Booking confirmed* — {$b['ref']}")), 2, 'the confirmation reached both numbers');
+    // each alert can be switched off, or all of them paused (a test still goes out)
+    eq(array_intersect_key(Ydr\Whatsapp::save(['onNew' => false, 'onConfirmed' => false]), ['onNew' => 1, 'onConfirmed' => 1]), ['onNew' => false, 'onConfirmed' => false]);
+    Ydr\Whatsapp::newBooking($b);
+    Ydr\Whatsapp::bookingConfirmed($b);
+    eq(Ydr\Whatsapp::hasQueue(), false, 'both switched off');
+    Ydr\Whatsapp::save(['on' => false]);
+    eq(Ydr\Whatsapp::send('paused'), ['off' => true]);
+    eq(count(Ydr\Whatsapp::send('test while paused', true)['results']), 2);
+    Ydr\Settings::set(['wa_alert_numbers' => '', 'wa_alert_on' => '1', 'wa_alert_new' => '1', 'wa_alert_confirmed' => '1']); // back to the defaults
+});
+
+test('new website bookings are emailed to each admin address saved in Settings (.env until a list is saved)', function () use ($guest, $d) {
+    eq(Ydr\Mailer::adminEmailsInfo()['fromEnv'], true);
+    eq(Ydr\Mailer::adminEmails(), Ydr\Config::get()['admin']['notifyEmails'], 'until a list is saved: ADMIN_NOTIFY_EMAILS');
+    $n = Ydr\Mailer::saveAdminEmails(['owner@example.com', ' manager@example.com ', '', 'OWNER@example.com']);
+    eq([$n['emails'], $n['fromEnv']], [['owner@example.com', 'manager@example.com'], false], 'trimmed; empty rows and repeats dropped');
+    throws(fn () => Ydr\Mailer::saveAdminEmails(['not-an-email']), '/not an email/');
+    throws(fn () => Ydr\Mailer::saveAdminEmails(["a@example.com\r\nBcc: x@example.com"]), '/not an email/');
+    throws(fn () => Ydr\Mailer::saveAdminEmails(array_map(fn ($i) => "a$i@example.com", range(1, 11))), '/Up to 10/');
+    throws(fn () => Ydr\Mailer::saveAdminEmails('owner@example.com'), '/list/');
+    throws(fn () => Ydr\Mailer::saveAdminEmails([['owner@example.com']]), '/text/');
+    eq(Ydr\Mailer::adminEmails(), ['owner@example.com', 'manager@example.com'], 'a refused list changes nothing');
+    eq([Ydr\App::permFor('GET', '/notify-emails'), Ydr\App::permFor('PUT', '/notify-emails')], [['site'], ['site']]);
+    $b = B::createBooking($guest + ['room' => 'kitul-canopy-cabin', 'checkIn' => $d(540), 'checkOut' => $d(542)]);
+    Ydr\Mailer::notifyNewBooking($b);
+    Ydr\Mailer::flushQueue();
+    $to = [];
+    foreach (glob(Ydr\Config::get()['dataDir'] . '/outbox/*.html') ?: [] as $f) {
+        $html = (string) file_get_contents($f);
+        if (str_contains($html, "Subject: New booking {$b['ref']}") && preg_match('/^<!-- To: (.*?) \|/', $html, $m)) $to[] = $m[1];
+    }
+    sort($to);
+    eq($to, ['manager@example.com', 'owner@example.com'], 'one email to each admin address');
+    // an empty list means nobody: .env no longer applies
+    eq(Ydr\Mailer::saveAdminEmails([])['emails'], []);
+    eq(Ydr\Mailer::adminEmailsInfo()['fromEnv'], false);
+    Ydr\Settings::set(['notify_emails' => '']); // back to .env for the other tests
 });
 
 test('bookings show in the Google Calendar feed at a secret link; cancelled ones drop out', function () use ($guest, $d) {
@@ -553,6 +624,57 @@ test('the payment invoice: what to pay, the bank details and the hold date, at a
     Ydr\Docs::savePaper('A5');
     throws(fn () => Ydr\Docs::savePaper('Letter'), '/A5 or A4/');
     B::saveSetup(['payment' => ['advancePct' => 0]]);
+});
+
+test('the advance is optional: off, a % or a fixed amount, and each booking can have its own', function () use ($guest, $d, $room) {
+    // a % of the total (as before)
+    B::saveSetup(['payment' => ['advanceOn' => true, 'advanceType' => 'pct', 'advancePct' => 30]]);
+    $pct = B::createBooking($guest + ['room' => 'na-treehouse', 'checkIn' => $d(380), 'checkOut' => $d(382)]);
+    eq([$pct['advance']['required'], $pct['advance']['amount'], $pct['advance']['pct'], $pct['holdUntil']], [true, (int) round($pct['totalAmount'] * 0.3), 30, $d(7)]);
+    // a fixed amount, never more than the total
+    $s = B::saveSetup(['payment' => ['advanceType' => 'amount', 'advanceAmount' => 10000]]);
+    eq([$s['payment']['advanceType'], $s['payment']['advanceAmount']], ['amount', 10000]);
+    eq(array_intersect_key(B::getBooking($pct['id'])['advance'], ['amount' => 0, 'pct' => 0, 'full' => 0]), ['amount' => 10000, 'full' => false, 'pct' => null]);
+    eq([B::advanceOf(6000)['amount'], B::advanceOf(6000)['full']], [6000, true], 'a fixed advance bigger than the total is the total');
+    throws(fn () => B::saveSetup(['payment' => ['advanceType' => 'deposit']]), '/fixed amount/');
+    throws(fn () => B::saveSetup(['payment' => ['advanceAmount' => -1]]), '/whole amount/');
+
+    // off: nothing to pay before arrival, no hold, never released or reminded to pay
+    B::saveSetup(['payment' => ['advanceOn' => false]]);
+    $free = B::createBooking($guest + ['room' => 'na-treehouse', 'checkIn' => $d(383), 'checkOut' => $d(384)]);
+    eq([$free['status'], $free['advance']['required'], $free['advance']['amount'], $free['advance']['source'], $free['holdUntil']], ['pending', false, 0, 'off', null]);
+    $a = Ydr\Docs::amounts($free);
+    eq([$a['atResort'], $a['due'], $a['dueLabel']], [true, $free['totalAmount'], 'To pay at the resort']);
+    $html = Ydr\Docs::invoiceHtml($free);
+    if (!str_contains($html, 'Nothing to pay before you arrive') || str_contains($html, 'Advance to pay now')) throw new Exception('the invoice still asks for an advance');
+    throws(fn () => Ydr\Reminders::sendFor($free), '/no advance/');
+    Ydr\Db::run('UPDATE bookings SET hold_until = ? WHERE id = ?', [$d(-1), $pct['id']]); // held from before it was switched off
+    eq(B::releaseExpired(), [], 'with the advance off, a reservation is not released');
+    // the email the guest gets says so too
+    Ydr\Mailer::sendInvoice($free);
+    Ydr\Mailer::flushQueue();
+    $mails = array_filter(glob(Ydr\Config::get()['dataDir'] . '/outbox/*.html') ?: [], fn ($f) => str_contains((string) file_get_contents($f), $free['ref']));
+    if (!$mails || !str_contains((string) file_get_contents(end($mails)), 'nothing to pay before you arrive')) throw new Exception('the invoice email still asks for an advance');
+
+    // …but staff can still ask one booking for an advance: it is held, and released if unpaid
+    $own = B::createBooking(['guestName' => 'Asked anyway', 'kind' => 'room', 'roomId' => $room('hora-pool-villa')['id'], 'checkIn' => $d(385), 'checkOut' => $d(386),
+        'source' => 'phone', 'status' => 'pending', 'advanceAmount' => 5000], true, 'admin');
+    eq([$own['advance']['required'], $own['advance']['amount'], $own['advance']['source'], $own['holdUntil']], [true, 5000, 'booking', $d(7)]);
+    $up = B::updateBooking($free['id'], ['advanceAmount' => 7500]);
+    eq([$up['advance']['amount'], $up['holdUntil']], [7500, $d(7)], 'asked for an advance after all: it is held again');
+    Ydr\Db::run('UPDATE bookings SET hold_until = ? WHERE id = ?', [$d(-1), $own['id']]);
+    eq(B::releaseExpired(), [$own['ref']], 'its own advance unpaid by the hold date: released');
+    throws(fn () => B::updateBooking($free['id'], ['advanceAmount' => -5]), '/whole amount/');
+
+    // on again: one booking can be let off the advance (not held), then go back to Booking setup's
+    B::saveSetup(['payment' => ['advanceOn' => true, 'advanceType' => 'pct', 'advancePct' => 30]]);
+    $none = B::createBooking(['guestName' => 'Regular guest', 'kind' => 'room', 'roomId' => $room('hora-pool-villa')['id'], 'checkIn' => $d(387), 'checkOut' => $d(388),
+        'source' => 'phone', 'status' => 'pending', 'advanceAmount' => 0, 'holdUntil' => $d(3)], true, 'admin');
+    eq([$none['advance']['required'], $none['holdUntil']], [false, null], 'no advance: not held');
+    $back = B::updateBooking($none['id'], ['advanceAmount' => '']);
+    eq([$back['advance']['required'], $back['advance']['source'], $back['advance']['pct'], $back['holdUntil']], [true, 'setup', 30, $d(7)], 'back to Booking setup: held the usual days again');
+    eq(B::updateBooking($back['id'], ['advanceAmount' => 0])['holdUntil'], null, 'let off the advance: the hold goes');
+    B::saveSetup(['payment' => ['advancePct' => 0, 'advanceAmount' => 0]]);
 });
 
 test('coupons: off the room charge only, with a usage limit, dates and batches', function () use ($guest, $d, $room) {
@@ -927,7 +1049,7 @@ test('one booking can hold several rooms: all are taken, each priced per night',
     $b = B::createBooking($guest + ['kind' => 'room', 'rooms' => ['kitul-canopy-cabin', 'weera-canopy-cabin'], 'checkIn' => $d(490), 'checkOut' => $d(492)]);
     eq([$b['status'], $b['kind'], $b['roomId'], $slugs($b)], ['pending', 'room', $kitul['id'], ['kitul-canopy-cabin', 'weera-canopy-cabin']]);
     eq($b['totalAmount'], ($kitul['price'] + $weera['price']) * 2);
-    eq([$b['capacity'], $b['roomName'], $b['place']], [4, 'Kitul Canopy Cabin, Weera Canopy Cabin', 'Kitul Canopy Cabin, Weera Canopy Cabin']);
+    eq([$b['capacity'], $b['roomName'], $b['place']], [4, 'Kitul Canopy Cabin, Weera Canopy Cabin', 'Kitul Canopy Cabin, Weera Canopy Cabin · Room only']);
     eq($b['listRates']['room'], $kitul['price'] + $weera['price'], 'the list rate is a night for all the rooms');
     // both rooms are gone for those nights, and the hotel counts both rooms' beds
     $free = array_column(array_filter(B::searchRooms($d(490), $d(492)), fn ($r) => $r['available']), 'slug');
@@ -936,7 +1058,7 @@ test('one booking can hold several rooms: all are taken, each priced per night',
     throws(fn () => B::createBooking($guest + ['room' => 'weera-canopy-cabin', 'checkIn' => $d(491), 'checkOut' => $d(493)]), 'code:unavailable');
     throws(fn () => B::createBooking($guest + ['rooms' => ['domba-pool-villa', 'kitul-canopy-cabin'], 'checkIn' => $d(491), 'checkOut' => $d(493)]), 'code:unavailable');
     // the invoice lists each room
-    eq(array_column(B::priceLines($b), 'label'), ['Kitul Canopy Cabin', 'Weera Canopy Cabin']);
+    eq(array_column(B::priceLines($b), 'label'), ['Kitul Canopy Cabin · Room only', 'Weera Canopy Cabin · Room only']);
     $html = Ydr\Docs::invoiceHtml(B::getBooking($b['id']));
     foreach (['Kitul Canopy Cabin', 'Weera Canopy Cabin'] as $want) if (!str_contains($html, $want)) throw new Exception("invoice lacks $want");
     // finance (confirmed stays) gives every room its nights and a share of the price
@@ -1045,6 +1167,140 @@ test('admin can change reminder settings, and send a reminder for one booking wh
     $r = Ydr\Reminders::admin();
     eq(count($r['recent']) >= 2, true, 'recently sent list');
     Ydr\Mailer::flushQueue();
+});
+
+// ---------- the rate sheet: room categories, meal plans and whole categories ----------
+test('the rate sheet: a price per meal plan for each room, and a category can be booked whole', function () use ($guest, $d, $room, $slugs) {
+    [$kitul, $weera] = [$room('kitul-canopy-cabin'), $room('weera-canopy-cabin')];
+    $cat = B::saveCategory(null, ['name' => 'Canopy Cabins', 'wholeCode' => 'W/C', 'wholeLabel' => 'Whole Canopy', 'wholeCapacity' => 4, 'wholePrices' => ['RO' => 30000, 'BB' => 40000, 'HB' => 50000, 'FB' => 0]]);
+    $sheet = B::saveRateSheet([
+        'categories' => [['id' => $cat['id'], 'name' => 'Canopy Cabins']],
+        'rooms' => [
+            ['id' => $kitul['id'], 'categoryId' => $cat['id'], 'label' => 'Double Room', 'capacity' => 2, 'prices' => ['RO' => $kitul['price'], 'BB' => 21000, 'HB' => 26000, 'FB' => 31000]],
+            ['id' => $weera['id'], 'categoryId' => $cat['id'], 'label' => 'Double Room', 'capacity' => 2, 'prices' => ['RO' => $weera['price'], 'BB' => 22000, 'HB' => 27000, 'FB' => 0]],
+        ],
+    ]);
+    $c = current(array_filter($sheet['categories'], fn ($x) => $x['id'] === $cat['id']));
+    eq([array_column($c['rooms'], 'slug'), $c['whole']['label'], $c['whole']['prices']['BB']], [['kitul-canopy-cabin', 'weera-canopy-cabin'], 'Whole Canopy', 40000]);
+    eq([$room('kitul-canopy-cabin')['type'], $room('kitul-canopy-cabin')['label'], $room('kitul-canopy-cabin')['prices']['HB']], ['Canopy Cabins', 'Double Room', 26000], 'a room takes its category name');
+    throws(fn () => B::saveRateSheet(['rooms' => [['id' => $kitul['id'], 'prices' => ['BB' => -5]]]]), '/Bed & breakfast price/');
+    eq($room('kitul-canopy-cabin')['prices']['BB'], 21000, 'nothing saved when a price is wrong');
+    B::saveCategory($cat['id'], ['name' => 'Canopy']);
+    eq($room('weera-canopy-cabin')['type'], 'Canopy', 'renaming a category renames its rooms\' type');
+
+    // a room at half board: its half-board price a night; changing the plan re-prices it
+    $b = B::createBooking($guest + ['room' => 'kitul-canopy-cabin', 'mealPlan' => 'HB', 'checkIn' => $d(200), 'checkOut' => $d(202)]);
+    eq([$b['mealPlan'], $b['mealPlanLabel'], $b['totalAmount'], $b['place']], ['HB', 'Half board', 52000, 'Kitul Canopy Cabin · Half board']);
+    eq(array_column(B::priceLines($b), 'label'), ['Kitul Canopy Cabin · Half board']);
+    eq([$b['listRates']['room'], B::updateBooking($b['id'], ['mealPlan' => 'BB'])['totalAmount']], [26000, 42000]);
+    // a plan a room doesn't offer (price 0) can't be booked; unknown plans are refused
+    throws(fn () => B::createBooking($guest + ['room' => 'weera-canopy-cabin', 'mealPlan' => 'FB', 'checkIn' => $d(205), 'checkOut' => $d(206)]), '/no Full board rate/');
+    throws(fn () => B::createBooking($guest + ['room' => 'weera-canopy-cabin', 'mealPlan' => 'XX', 'checkIn' => $d(205), 'checkOut' => $d(206)]), '/meal plan/');
+    B::updateBooking($b['id'], ['status' => 'cancelled']);
+
+    // the whole category: all its rooms, at its one price
+    $w = B::createBooking($guest + ['wholeCategory' => $cat['id'], 'mealPlan' => 'BB', 'checkIn' => $d(210), 'checkOut' => $d(212)]);
+    eq([$slugs($w), $w['totalAmount'], $w['wholeCategory']['label'], $w['listRates']['room']], [['kitul-canopy-cabin', 'weera-canopy-cabin'], 80000, 'Whole Canopy', 40000]);
+    eq($w['place'], 'Canopy — Whole Canopy (Kitul Canopy Cabin, Weera Canopy Cabin) · Bed & breakfast');
+    eq(array_map(fn ($l) => [$l['label'], $l['amount']], B::priceLines($w)), [['Canopy — Whole Canopy · Bed & breakfast', 80000]]);
+    throws(fn () => B::createBooking($guest + ['room' => 'weera-canopy-cabin', 'checkIn' => $d(211), 'checkOut' => $d(213)]), 'code:unavailable');
+    // with another room: that room at its own price
+    $w2 = B::createBooking($guest + ['wholeCategory' => $cat['id'], 'rooms' => ['domba-pool-villa'], 'checkIn' => $d(215), 'checkOut' => $d(216)]);
+    eq([count($w2['rooms']), $w2['totalAmount']], [3, 30000 + $room('domba-pool-villa')['price']]);
+    // a plan the whole category has no price for isn't offered
+    throws(fn () => B::createBooking($guest + ['wholeCategory' => $cat['id'], 'mealPlan' => 'FB', 'checkIn' => $d(220), 'checkOut' => $d(221)]), '/Whole Canopy has no Full board rate/');
+    // a room leaving the booking ends the whole price (the rest are priced room by room); choosing it again adds its rooms back
+    $w = B::assignRooms($w['id'], [$kitul['id']]);
+    eq([$w['wholeCategory'], $w['totalAmount']], [null, 2 * 21000]);
+    $w = B::updateBooking($w['id'], ['wholeCategory' => $cat['id']]);
+    eq([count($w['rooms']), $w['totalAmount']], [2, 80000]);
+    // a category with rooms can't be deleted; the public sheet shows it with the meal plans
+    throws(fn () => B::deleteCategory($cat['id']), '/Move the rooms/');
+    $pub = B::rateSheet(true);
+    eq([in_array('Canopy', array_column($pub['categories'], 'name'), true), array_column($pub['mealPlans'], 'code')], [true, ['RO', 'BB', 'HB', 'FB']]);
+});
+
+test('the cancellation policy is saved in Booking setup and shown escaped on the booking page', function () {
+    eq([B::cancellationPolicy(), Ydr\App::policySection('')], ['', '']);
+    $s = B::saveSetup(['cancellationPolicy' => "  Refunds <b>apply</b>.\r\nCall us.\r\n\r\n- 14+ days: full refund\n* 7-13 days: half\n\nThanks  "]);
+    eq($s['cancellationPolicy'], "Refunds <b>apply</b>.\nCall us.\n\n- 14+ days: full refund\n* 7-13 days: half\n\nThanks");
+    $html = Ydr\App::policySection(B::cancellationPolicy());
+    eq(str_contains($html, '<p>Refunds &lt;b&gt;apply&lt;/b&gt;.<br>Call us.</p><ul><li>14+ days: full refund</li><li>7-13 days: half</li></ul><p>Thanks</p>'), true, $html);
+    eq(str_contains($html, 'id="cancellation-policy"'), true);
+    throws(fn () => B::saveSetup(['cancellationPolicy' => ['not text']]), '/cancellation policy/');
+    B::saveSetup(['cancellationPolicy' => '']);
+    eq(B::cancellationPolicy(), '');
+});
+
+test('a payment can keep its bank slip (a photo or PDF), opened only by staff', function () use ($stay) {
+    $details = [];
+    foreach (Pos::paymentFields() as $f) if ($f['required']) $details[$f['key']] = $f['type'] === 'choice' ? $f['options'][0] : 'x';
+    $pay = fn (array $p) => ['amount' => 5000, 'method' => 'bank', 'details' => $details] + $p;
+    $paid = fn (array $f) => current(array_filter($f['payments'], fn ($p) => $p['id'] === $f['paymentId']));
+    $b = $stay('kumbuk-treehouse', 720, 721, ['status' => 'confirmed']);
+    $png = "\x89PNG\r\n\x1A\n" . str_repeat("\0", 32);
+    throws(fn () => Pos::saveSlip(''), '/No file/');
+    throws(fn () => Pos::saveSlip('<html>not a slip</html>'), '/photo .* or a PDF/');
+    $name = Pos::saveSlip($png);
+    eq((bool) preg_match('/^slip-\d{8}-[a-f0-9]{16}\.png$/', $name), true, $name);
+    eq(is_file(Ydr\Config::get()['dataDir'] . "/slips/$name"), true, 'kept in DATA_DIR/slips');
+    // only a name saveSlip gave, for a file that is there
+    throws(fn () => Pos::addPayment($b['id'], $pay(['slip' => '../topmountain.db']), 'admin'), '/slip was not found/');
+    throws(fn () => Pos::addPayment($b['id'], $pay(['slip' => 'slip-20260101-0000000000000000.png']), 'admin'), '/slip was not found/');
+    $f = Pos::addPayment($b['id'], $pay(['slip' => $name]), 'admin');
+    eq($paid($f)['slipUrl'], "/api/admin/pos/payments/{$f['paymentId']}/slip");
+    eq(Pos::slipOf($f['paymentId']), [$png, 'image/png', Pos::receiptNo($f['paymentId']) . '-slip.png']);
+    throws(fn () => Pos::addPayment($b['id'], $pay(['slip' => $name]), 'admin'), '/already on another payment/');
+    // without one: no link, nothing to open
+    $f = Pos::addPayment($b['id'], $pay(['method' => 'cash']), 'admin');
+    eq([$paid($f)['slipUrl'], Pos::slipOf($f['paymentId'])], [null, null]);
+    // a PDF works too; staff who take payments can upload and open slips
+    eq(str_ends_with(Pos::saveSlip("%PDF-1.4\n%%EOF"), '.pdf'), true);
+    eq([Ydr\App::permFor('POST', '/pos/slips'), Ydr\App::permFor('GET', '/pos/payments/9/slip'), Ydr\App::permFor('POST', '/pos/payments/9/slip')],
+        [['bookings', 'pos'], ['bookings', 'pos', 'finance'], ['pos']]);
+});
+
+test('the guest sends their payment slip from the invoice link; staff record the payment with it', function () use ($stay) {
+    $details = [];
+    foreach (Pos::paymentFields() as $f) if ($f['required']) $details[$f['key']] = $f['type'] === 'choice' ? $f['options'][0] : 'x';
+    $png = "\x89PNG\r\n\x1A\n" . str_repeat("\1", 32);
+    $b = $stay('kumbuk-treehouse', 730, 731, ['status' => 'pending', 'totalAmount' => 40000]);
+    // the invoice offers the upload (on screen only, not inside the admin panel) and the emails point to it
+    $html = Ydr\Docs::invoiceHtml($b);
+    eq([str_contains($html, 'data-slip-form'), str_contains($html, 'data-url="/api' . Ydr\Docs::invoicePath($b) . '/slip"')], [true, true]);
+    eq(str_contains(Ydr\Docs::invoiceHtml($b, true), 'data-slip-form'), false, 'not in the admin preview');
+    eq(Ydr\Docs::invoiceBooking($b['ref'], basename(Ydr\Docs::invoicePath($b)))['id'], $b['id']);
+    // what the guest sends is checked
+    throws(fn () => Pos::addGuestSlip($b, $png, 'abc'), '/whole number/');
+    throws(fn () => Pos::addGuestSlip($b, 'not a slip'), '/photo .* or a PDF/');
+    $s = Pos::addGuestSlip($b, $png, '20000', ' Paid from BOC <b>4411</b> ');
+    eq([$s['amount'], $s['note'], $s['paymentId'], $s['url']], [20000, 'Paid from BOC <b>4411</b>', null, "/api/admin/pos/guest-slips/{$s['id']}"]);
+    eq(Pos::guestSlipFile($s['id'])[0], $png);
+    eq(str_starts_with(Pos::guestSlipFile($s['id'])[2], $b['ref'] . '-guest-slip-'), true);
+    $mine = Pos::guestSlipsPublic($b['id']);
+    eq([count($mine), $mine[0]['amount'], $mine[0]['recorded'], isset($mine[0]['key'])], [1, 20000, false, false], 'the guest never sees the file name');
+    $html = Ydr\Docs::invoiceHtml(B::getBooking($b['id']));
+    eq([str_contains($html, 'Your payment slips'), str_contains($html, 'Paid from BOC &lt;b&gt;4411&lt;/b&gt;'), str_contains($html, '<b>4411</b>')], [true, true, false], 'escaped');
+    // the bookings list shows it is waiting; staff confirm with the guest's slip and it is recorded
+    $row = current(array_filter(Pos::withGuestSlips(B::listBookings(['limit' => 500])), fn ($x) => $x['id'] === $b['id']));
+    eq($row['slipWaiting'], 1);
+    B::confirmBooking($b['id'], []);
+    $f = Pos::addPayment($b['id'], ['amount' => 20000, 'method' => 'bank', 'details' => $details, 'slip' => $s['key']], 'admin');
+    $g = Pos::guestSlips($b['id'])[0];
+    eq([$g['paymentId'], $g['receiptNo']], [$f['paymentId'], Pos::receiptNo($f['paymentId'])]);
+    eq(Pos::slipOf($f['paymentId'])[0], $png, 'the payment opens the same slip');
+    eq(Pos::guestSlipsPublic($b['id'])[0]['recorded'], true);
+    eq(current(array_filter(Pos::withGuestSlips([B::getBooking($b['id'])]), fn ($x) => true))['slipWaiting'], 0);
+    // cancelling the payment frees the slip for the corrected one
+    Pos::voidPayment($f['paymentId'], 'admin');
+    eq(Pos::guestSlips($b['id'])[0]['paymentId'], null);
+    $f2 = Pos::addPayment($b['id'], ['amount' => 20000, 'method' => 'bank', 'details' => $details, 'slip' => $s['key']], 'admin');
+    eq(Pos::guestSlips($b['id'])[0]['paymentId'], $f2['paymentId']);
+    // a cancelled booking takes no more slips; staff can open guest slips
+    $c = B::updateBooking($b['id'], ['status' => 'cancelled']);
+    throws(fn () => Pos::addGuestSlip($c, $png), '/no longer takes payment slips/');
+    eq(str_contains(Ydr\Docs::invoiceHtml($c), 'data-slip-form'), false);
+    eq([Ydr\App::permFor('GET', '/pos/guest-slips/3'), Ydr\App::permFor('DELETE', '/pos/guest-slips/3')], [['bookings', 'pos', 'finance'], ['pos']]);
 });
 
 echo "\n$pass passed, $fail failed  (test database: " . (Ydr\Db::driver() === 'mysql' ? 'MySQL ' . Ydr\Config::get()['db']['database'] : $tmp) . ")\n";

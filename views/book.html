@@ -17,6 +17,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/booking-base.css">
   <link rel="stylesheet" href="/css/book.css">
+  <link rel="stylesheet" href="/css/chat.css">
 </head>
 <body class="book-page is-loaded">
   <a class="skip" href="#main">Skip to content</a>
@@ -38,7 +39,7 @@
   <header class="nav is-scrolled" data-nav>
     <a class="nav__logo" href="/" aria-label="{{site.name}}, home"><span class="logo" aria-hidden="true"></span></a>
     <div class="nav__actions">
-      <a class="btn btn--ghost btn--sm" href="/"><svg width="16" height="16"><use href="#i-left"/></svg> Back to the resort</a>
+      <a class="btn btn--ghost btn--sm" href="/" aria-label="Back to the resort"><svg width="16" height="16"><use href="#i-left"/></svg> Back<span class="nav__more">&nbsp;to the resort</span></a>
     </div>
   </header>
 
@@ -67,6 +68,11 @@
         </header>
         <div class="bk-kinds" role="radiogroup" aria-label="How to book" data-kinds></div>
         <div class="bk-pkgs" role="radiogroup" aria-label="Option" data-packages hidden></div>
+        <!-- room bookings: the meal plan (the rate sheet's RO, BB, HB, FB) -->
+        <div class="bk-plans-box" data-plans-box hidden>
+          <h3 class="bk-plans__title">Meals with your room</h3>
+          <div class="bk-plans" role="radiogroup" aria-label="Meal plan" data-plans></div>
+        </div>
 
         <header class="bk-panel__head bk-panel__head--sub">
           <h3 data-when-title>When are you coming?</h3>
@@ -108,8 +114,11 @@
         <header class="bk-panel__head">
           <h2>Choose your rooms</h2>
           <p data-rooms-sub></p>
-          <p class="bk-panel__hint">Add one room, or several for a family or group. They're booked together, on one booking.</p>
+          <p class="bk-panel__hint">Add one room, several for a family or group, or a whole villa. They're booked together, on one booking.</p>
         </header>
+        <div class="bk-plans-box bk-plans-box--compact" data-plans-box hidden>
+          <div class="bk-plans" role="radiogroup" aria-label="Meal plan" data-plans></div>
+        </div>
         <div class="bk-notice" data-party-warning hidden></div>
         <div class="bk-rooms" data-room-list></div>
         <details class="bk-datebox" data-datebox open>
@@ -200,10 +209,16 @@
             </div>
             <span class="bk-coupon__msg" data-coupon-msg aria-live="polite"></span>
           </div>
+          <div class="field field--full bk-slip" data-slip-field hidden>
+            <label for="f-slip">Advance payment slip <small>(optional)</small></label>
+            <p class="bk-slip__pay" data-slip-pay hidden></p>
+            <input id="f-slip" name="slip" type="file" accept="image/jpeg,image/png,image/webp,image/gif,application/pdf">
+            <small class="bk-slip__hint">Already paid the advance? Attach a photo or PDF of the bank slip or transfer receipt. Not paid yet? Book now and send the slip later from your invoice.</small>
+          </div>
           <div class="hp" aria-hidden="true"><label>Website <input name="website" tabindex="-1" autocomplete="off"></label></div>
           <label class="check field--full">
             <input type="checkbox" name="agree" required>
-            <span>I understand this is a booking request — it is confirmed once Top Mountain Resort receives the advance payment.</span>
+            <span>I understand this is a booking request — {{book.agree}}</span>
           </label>
           <div class="bk-actions field--full">
             <button class="btn btn--ghost" type="button" data-goto="2"><svg width="16" height="16"><use href="#i-left"/></svg> Back</button>
@@ -220,6 +235,7 @@
         <h2 data-done-title>Thank you!</h2>
         <p class="lead" data-done-text></p>
         <div class="bk-ref">Booking reference <b data-done-ref></b></div>
+        <div class="bk-slip-done" data-done-slip role="status" hidden></div>
         <div class="bk-pay" data-done-pay></div>
         <div class="bk-actions bk-actions--center">
           <a class="btn" data-done-invoice target="_blank" rel="noopener" hidden>View your invoice</a>
@@ -228,6 +244,9 @@
           <a class="btn btn--amber" href="/">Back to Top Mountain</a>
         </div>
       </section>
+
+      <!-- the cancellation policy (Admin → Booking setup), on every step -->
+      {{book.policy}}
     </div>
 
     <aside class="bk__summary" data-summary aria-live="polite">
@@ -250,7 +269,7 @@
           </div>
           <ul class="sum__perks">
             <li><svg width="16" height="16"><use href="#i-check"/></svg>Best rate — booking direct</li>
-            <li><svg width="16" height="16"><use href="#i-check"/></svg>Confirmed once the advance is paid</li>
+            <li><svg width="16" height="16"><use href="#i-check"/></svg>{{book.perk}}</li>
             <li data-sum-meals><svg width="16" height="16"><use href="#i-check"/></svg><span></span></li>
             <li data-sum-times><svg width="16" height="16"><use href="#i-check"/></svg>Check-in from {{site.checkIn}} · out by {{site.checkOut}}</li>
           </ul>
@@ -262,7 +281,7 @@
 
   <footer class="bk-foot container">© {{year}} {{site.name}} · {{site.address}}<span class="bk-foot__credit">{{site.poweredBy}}</span></footer>
 
-  <!-- shown once a booking is made: it is pending until the advance is paid -->
+  <!-- shown once a booking is made: it is pending until the advance is paid (or, with no advance, until the resort confirms it) -->
   <div class="bk-modal" data-pay-modal hidden>
     <div class="bk-modal__scrim" data-pay-close></div>
     <section class="bk-modal__card" role="dialog" aria-modal="true" aria-labelledby="pay-title">
@@ -277,5 +296,6 @@
   <script src="/js/common.js"></script>
   <script src="/js/calendar.js"></script>
   <script src="/js/book.js"></script>
+  <script src="/js/chat.js"></script>
 </body>
 </html>

@@ -29,6 +29,7 @@
 
 .bk-alert { margin-bottom: 18px; padding: 14px 18px; border-radius: 6px; background: #fbe9dc; color: #7a3412; border: 1px solid #f1c6a6; font-weight: 600; font-size: 0.94rem; }
 .bk-alert.is-info { background: #e8f1df; color: #2c4a22; border-color: #c8ddb5; }
+.bk-alert .linkish { background: none; border: 0; padding: 0; color: inherit; font: inherit; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 
 .bk-panel__head--sub { margin: 30px 0 14px; padding-top: 26px; border-top: 1px solid var(--line-light); }
 .bk-panel__head--sub h3 { font-size: clamp(1.4rem, 2.2vw, 1.75rem); margin-bottom: 4px; }
@@ -58,6 +59,25 @@
 .pkg__price small { font-size: 0.74rem; font-weight: 500; color: var(--ink-soft); }
 .pkg__unit { display: block; font-size: 0.74rem; font-weight: 500; color: var(--ink-soft); }
 .pkg.is-off { opacity: 0.5; cursor: default; }
+
+/* meal plan (room bookings): room only, bed & breakfast, half board, full board */
+.bk-plans-box { margin-top: 18px; }
+.bk-plans__title { margin: 0 0 10px; font-family: var(--font-display); font-size: 1.3rem; font-weight: 500; }
+.bk-plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.plan { position: relative; display: flex; flex-direction: column; gap: 3px; padding: 14px 14px 12px; border-radius: 6px; border: 1.5px solid var(--line-light); background: #fff; cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s; }
+.plan:hover:not(.is-off) { border-color: var(--moss-500); }
+.plan:has(input:checked) { border-color: var(--forest-800); box-shadow: 0 0 0 3px rgba(41, 75, 58, 0.35); background: linear-gradient(160deg, #fff 55%, #e9eee5); }
+.plan input { position: absolute; top: 13px; right: 12px; width: 18px; height: 18px; margin: 0; accent-color: var(--forest-800); }
+.plan__code { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.14em; color: var(--moss-500); }
+.plan__name { font-family: var(--font-display); font-size: 1.12rem; line-height: 1.15; padding-right: 22px; }
+.plan__sub { flex: 1; font-size: 0.78rem; line-height: 1.35; color: var(--ink-soft); }
+.plan__price { margin-top: 6px; font-size: 0.88rem; font-weight: 700; color: var(--forest-800); }
+.plan__price small { font-size: 0.72rem; font-weight: 500; color: var(--ink-soft); }
+.plan.is-off { opacity: 0.5; cursor: default; }
+.bk-plans-box--compact { margin: 0 0 18px; }
+.bk-plans-box--compact .plan { padding: 10px 12px; }
+.bk-plans-box--compact .plan__sub { display: none; }
+.bk-plans-box--compact .plan__price { margin-top: 2px; }
 
 /* "a party is booked" notice */
 .bk-notice { margin-bottom: 16px; padding: 14px 18px; border-radius: 6px; background: #fff7e6; border: 1px solid #f1d9a6; color: #6b4a10; font-size: 0.9rem; line-height: 1.5; }
@@ -97,14 +117,16 @@
 .extra.is-off { opacity: 0.65; cursor: default; }
 .extra.is-off small { color: #8a3b10; }
 
-.bk-cal { padding: 8px 0 4px; max-width: 100%; overflow: hidden; }
+.bk-cal { padding: 8px 0 4px; max-width: 100%; overflow: hidden; container-type: inline-size; }
+/* day cells shrink on narrow phones (7 × 44px is wider than the panel there), never past 44px */
+.bk-cal.cal { --cell: min(44px, 100cqw / 7); }
 .bk-cal .cal__months { gap: 40px; }
 .bk-guests { margin-top: 22px; padding: 6px 20px; border-radius: 6px; background: var(--cream-100); }
 .bk-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; margin-top: 26px; }
 .bk-actions--center { justify-content: center; }
 
 /* room choices */
-.bk-rooms { display: grid; gap: 14px; }
+.bk-rooms { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .bk-room { display: grid; grid-template-columns: 190px 1fr auto; gap: 20px; align-items: center; padding: 12px; border-radius: 8px; border: 1.5px solid var(--line-light); background: #fff; transition: border-color 0.25s, box-shadow 0.25s, transform 0.25s; }
 .bk-room:hover:not(.is-off) { border-color: var(--moss-500); box-shadow: 0 18px 40px -28px rgba(30, 58, 44, 0.5); }
 .bk-room.is-selected { border-color: var(--forest-800); box-shadow: 0 0 0 3px rgba(41, 75, 58, 0.35); }
@@ -118,6 +140,16 @@
 .bk-room__side { text-align: right; padding-right: 8px; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .bk-room__side .price b { font-size: 1.3rem; }
 .bk-room__side small { display: block; font-size: 0.78rem; color: var(--ink-soft); }
+/* rooms grouped as on the rate sheet, each category with its whole option */
+.bk-cat { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.bk-cat + .bk-cat { margin-top: 14px; padding-top: 20px; border-top: 1px solid var(--line-light); }
+.bk-cat__title { margin: 0; font-family: var(--font-display); font-size: 1.55rem; font-weight: 500; }
+.bk-whole { display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center; padding: 16px 18px; border-radius: 8px; border: 1.5px dashed var(--brass); background: linear-gradient(160deg, #fff 40%, #f4ede2); transition: border-color 0.25s, box-shadow 0.25s; }
+.bk-whole h3 { font-size: 1.3rem; margin: 2px 0 2px; }
+.bk-whole p { margin: 0; font-size: 0.88rem; color: var(--ink-soft); }
+.bk-whole .bk-room__type { color: var(--brass-ink); }
+.bk-whole.is-selected { border-style: solid; border-color: var(--forest-800); box-shadow: 0 0 0 3px rgba(41, 75, 58, 0.35); }
+.bk-whole.is-off { opacity: 0.6; }
 .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; }
 .pill--ok { background: #e3f0d6; color: #2f5524; }
 .pill--no { background: #f6e3d6; color: #8a3b10; }
@@ -145,6 +177,13 @@
 .bk-coupon__msg { min-height: 1.2em; font-size: 0.84rem; font-weight: 600; color: var(--ink-soft, #5d6458); }
 .bk-coupon__msg.is-ok { color: #3f7a36; }
 .bk-coupon__msg.is-bad { color: #a2431a; }
+/* the advance payment slip, sent with the booking */
+.bk-slip input[type="file"] { padding: 10px 12px; cursor: pointer; font-size: 0.92rem; }
+.bk-slip__pay { margin: 0; padding: 10px 14px; border-radius: 6px; background: var(--cream, #f5eedd); font-size: 0.88rem; line-height: 1.5; }
+.bk-slip__hint { font-size: 0.82rem; color: var(--ink-soft, #5d6458); line-height: 1.45; }
+.bk-slip-done { margin: 14px auto 0; max-width: 560px; padding: 12px 16px; border-radius: 8px; background: #eaf3e1; color: #2b4c22; font-weight: 600; font-size: 0.92rem; }
+.bk-slip-done.is-bad { background: #fbeee6; color: #8a3714; }
+.bk-slip-done a { color: inherit; }
 .sum__line--off > span:last-child { color: #c7e59b; font-weight: 700; }
 .req-chips button { border: 1px dashed var(--sand-300); background: transparent; border-radius: 999px; padding: 6px 12px; font-size: 0.8rem; font-weight: 600; color: var(--bark-600); transition: background 0.2s, border-color 0.2s; }
 .req-chips button:hover { background: var(--cream-100); border-color: var(--bark-600); }
@@ -192,6 +231,14 @@
 .sum__help { font-size: 0.85rem; color: var(--ink-soft); text-align: center; margin-top: 14px; }
 .sum__help a { font-weight: 700; }
 
+/* the cancellation policy under the booking steps */
+.bk-policy { margin-top: 28px; padding: clamp(20px, 3vw, 30px) clamp(22px, 4vw, 40px); border-radius: var(--radius-lg); border: 1px solid var(--line-light); background: var(--cream-100); }
+.bk-policy h2 { font-size: clamp(1.35rem, 2.2vw, 1.65rem); margin: 0 0 10px; }
+.bk-policy__body { font-size: 0.9rem; line-height: 1.6; color: var(--ink-soft); }
+.bk-policy__body p { margin: 0 0 10px; }
+.bk-policy__body ul { margin: 0 0 10px; padding-left: 1.2em; display: grid; gap: 4px; }
+.bk-policy__body > :last-child { margin-bottom: 0; }
+
 .bk-foot { padding: 30px var(--gutter) 40px; text-align: center; font-size: 0.8rem; color: var(--ink-soft); }
 .bk-foot__credit { display: block; margin-top: 6px; }
 .bk-foot__credit:empty { display: none; }
@@ -201,7 +248,8 @@
 .is-busy::after { content: ''; width: 18px; height: 18px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin 0.7s linear infinite; }
 
 @media (max-width: 1020px) {
-  .bk { grid-template-columns: 1fr; }
+  /* minmax(0, …): the availability table scrolls sideways instead of widening the page */
+  .bk { grid-template-columns: minmax(0, 1fr); }
   .bk__summary { position: static; order: -1; }
   .sum { display: grid; grid-template-columns: 200px 1fr; }
   .sum__media { aspect-ratio: auto; }
@@ -209,13 +257,16 @@
 }
 @media (max-width: 720px) {
   .bk-room { grid-template-columns: 110px 1fr; }
-  .bk-room__side { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; text-align: left; padding: 6px 4px 2px; }
+  .bk-room__side { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; gap: 8px 12px; justify-content: space-between; align-items: center; text-align: left; padding: 6px 4px 2px; }
   .bk-room p { display: none; }
   .bk-form { grid-template-columns: 1fr; }
   .bk-kinds { grid-template-columns: 1fr; gap: 8px; }
   .kind { padding: 16px 16px 14px; }
   .kind__name { font-size: 1.25rem; }
   .bk-pkgs { grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; }
+  .bk-plans { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .bk-whole { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .bk-whole .bk-room__side { flex-direction: row; justify-content: space-between; align-items: center; text-align: left; padding: 0; }
   .pkg { padding: 13px 12px 12px; }
   .pkg input { top: 12px; right: 10px; }
   .pkg__name { font-size: 1rem; padding-right: 22px; }
@@ -236,7 +287,8 @@
   .bk { margin-top: -60px; gap: 16px; }
   .nav .btn--ghost { padding: 0 14px; }
   .bk-steps { gap: 8px 14px; font-size: 0.8rem; }
-  .bk-actions .btn { flex: 1; }
+  /* fill the row, but by their labels: equal halves clipped "Send booking request" */
+  .bk-actions .btn { flex: 1 1 auto; }
 }
 
 /* change dates on the room list */
@@ -245,6 +297,7 @@
 .bk-datebox > summary::-webkit-details-marker { display: none; }
 .bk-datebox[open] > summary { border-bottom: 1px solid var(--line, #e2ddd0); }
 .bk-datebox .bk-cal { padding: 14px 18px; }
+@media (max-width: 720px) { .bk-datebox .bk-cal { padding: 12px 10px; } }
 
 /* all rooms at a glance */
 .bk-grid { margin: 22px 0 6px; }
@@ -300,4 +353,10 @@
 .bk-pickbar .btn--amber { --bg: var(--cream-50); --fg: var(--forest-900); --fill: var(--sage); }
 .bk-room .btn[aria-pressed="true"] { color: var(--forest-800); }
 @media (max-width: 560px) { .bk-pickbar .btn { width: 100%; } }
+/* the smallest phones: "Back to the resort" doesn't fit beside the logo */
+@media (max-width: 360px) {
+  .nav__more { display: none; }
+  /* long labels ("Message us on WhatsApp") fit, and wrap rather than clip if they still can't */
+  .bk-actions .btn { padding: 8px 1.1em; letter-spacing: 0.1em; white-space: normal; text-align: center; line-height: 1.3; }
+}
 .bk-datebox { margin-top: 18px; }

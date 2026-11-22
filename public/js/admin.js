@@ -14,6 +14,7 @@
   /** What the signed-in login may use (Auth::ROLES on the server, which checks every request too). */
   const can = (perm) => !!(ME && Array.isArray(ME.perms) && ME.perms.includes(perm));
   let ROOMS = [];
+  let CATS = []; // room categories (the rate sheet), some with a whole-villa price
   const STATUS = { pending: 'Pending', confirmed: 'Confirmed', checked_in: 'Checked in', checked_out: 'Checked out', cancelled: 'Cancelled' };
 
   // ---------- utils ----------
@@ -38,9 +39,15 @@
   const whenOf = (b) => (isDayOut(b) || isParty(b) ? `${fd(b.checkIn)}${isParty(b) && b.arrivalTime ? ` · ${b.arrivalTime}` : ''}` : `${fd(b.checkIn)} → ${fd(b.checkOut)} · ${b.nights}n`);
   /** <select> value for what a booking is: "room", "pkg:<option id>" or "event" (an outdoor party) */
   const kindValue = (b) => (b.kind === 'room' ? 'room' : isParty(b) ? 'event' : `pkg:${b.packageId}`);
-  const kindOptions = (sel) => `<option value="room" ${sel === 'room' ? 'selected' : ''}>${esc((ME.labels && ME.labels.room) || 'Room')} — priced per room</option>`
-    + ME.packages.map((p) => `<option value="pkg:${p.id}" ${sel === `pkg:${p.id}` ? 'selected' : ''}>${esc(p.name)} — ${p.kind === 'day' ? 'day visit' : 'per person'}${p.active ? '' : ' (hidden)'}</option>`).join('')
-    + `<option value="event" ${sel === 'event' ? 'selected' : ''}>Outdoor party — day or night</option>`;
+  const kindOptions = (sel) => {
+    const pkg = (p) => `<option value="pkg:${p.id}" ${sel === `pkg:${p.id}` ? 'selected' : ''}>${esc(p.name)} — ${p.kind === 'day' ? 'day visit' : 'priced per person'}</option>`;
+    const shown = ME.packages.filter((p) => p.active);
+    const hidden = ME.packages.filter((p) => !p.active);
+    return `<option value="room" ${sel === 'room' ? 'selected' : ''}>Rooms — choose rooms and a meal plan (RO / BB / HB / FB)</option>`
+      + (shown.length ? `<optgroup label="Per person">${shown.map(pkg).join('')}</optgroup>` : '')
+      + `<option value="event" ${sel === 'event' ? 'selected' : ''}>Outdoor party — day or night</option>`
+      + (hidden.length ? `<optgroup label="Per person — not offered on the website">${hidden.map(pkg).join('')}</optgroup>` : '');
+  };
   /** {kind, packageId} from that <select> value */
   const parseKind = (v) => {
     if (v === 'event') return { kind: 'event', packageId: null };
@@ -55,6 +62,8 @@
     const p = new URLSearchParams({ kind, checkIn: form.checkIn.value, adults: num(form.adults), children: num(form.children) });
     if (packageId) p.set('packageId', packageId);
     if (kind === 'room') p.set('roomId', form.roomId.value);
+    if (kind === 'room' && form.mealPlan && !form.mealPlan.closest('[hidden]')) p.set('mealPlan', form.mealPlan.value);
+    if (kind === 'room' && form.wholeCategory && form.wholeCategory.value && !form.wholeCategory.closest('[hidden]')) p.set('wholeCategory', form.wholeCategory.value);
     if (kind === 'event') p.set('eventOthers', partyBody(form).eventOthers); // a party: what other guests can book then
     if (kind !== 'day_out' && kind !== 'event') p.set('checkOut', form.checkOut.value);
     if (kind !== 'day_out' && kind !== 'event' && form.partyArea && form.partyArea.checked && !form.partyArea.closest('[hidden]')) p.set('partyArea', '1');
@@ -97,6 +106,12 @@
 
   // rates agreed with the guest — the room's per night, or per adult / child; empty = the price list (staff.js, shared with POS walk-ins)
   const rateFields = (rates = {}, list = {}) => S.rateFieldsHtml(money, rates, list);
+  // a room booking's meal plan (RO, BB, HB, FB) and an optional whole villa: every room of a category at one price (Rate sheet)
+  const PLANS = () => (ME && ME.mealPlans && ME.mealPlans.length ? ME.mealPlans : [{ code: 'RO', name: 'Room only' }]);
+  const planName = (code) => (PLANS().find((p) => p.code === code) || {}).name || code;
+  const planFields = (plan = 'RO', wholeId = null) => `
+    <label class="fld" data-plan-f><span>Meal plan</span><select name="mealPlan">${PLANS().map((p) => `<option value="${esc(p.code)}" ${p.code === plan ? 'selected' : ''}>${esc(p.code)} — ${esc(p.name)}</option>`).join('')}</select></label>
+    <label class="fld" data-plan-f><span>Whole villa <small>(optional)</small></span><select name="wholeCategory"><option value="">No — rooms one by one</option>${CATS.filter((c) => c.whole || c.id === wholeId).map((c) => `<option value="${c.id}" ${c.id === wholeId ? 'selected' : ''}>${esc(c.name)} — ${esc(c.whole ? c.whole.label : 'whole')}</option>`).join('')}</select></label>`;
   const syncRates = (form, kind, r) => S.syncRates(form, kind, r, money);
   const rateBody = (form, kind) => S.rateBody(form, kind);
 
@@ -149,6 +164,42 @@
     return checkIn && checkIn >= today() && d > checkIn ? checkIn : d;
   };
 
+  // ---------- the advance a booking asks for (Booking setup's rule, or the booking's own) ----------
+  /** Booking setup's advance in words: "30% of the total", "LKR 10,000", "the whole total" or "no advance". */
+  const ruleText = () => {
+    const r = (ME && ME.advanceRule) || {};
+    if (!r.on) return 'no advance';
+    if (r.type === 'amount') return r.amount ? money(r.amount) : 'the whole total';
+    return r.pct ? `${r.pct}% of the total` : 'the whole total';
+  };
+  /** A booking's advance (b.advance) in words, for the booking drawer. */
+  const advanceText = (a) => (!a || !a.required ? 'None — pays at the resort'
+    : `${money(a.amount)}${a.full ? ' · the whole total' : a.pct !== null ? ` · ${a.pct}%` : ''}${a.source === 'booking' ? ' · set for this booking' : ''}`);
+  /** The Advance field of the booking forms: as in Booking setup, none, or an amount for this booking. own: null | 0 | amount. */
+  const advanceFields = (own = null) => {
+    const mode = own === null || own === undefined ? 'default' : own > 0 ? 'own' : 'none';
+    return `<div class="adv-row span2" data-adv-wrap>
+      <label class="fld"><span>Advance</span><select name="advanceMode">
+        <option value="default" ${mode === 'default' ? 'selected' : ''}>As in Booking setup (${esc(ruleText())})</option>
+        <option value="none" ${mode === 'none' ? 'selected' : ''}>No advance — pays at the resort</option>
+        <option value="own" ${mode === 'own' ? 'selected' : ''}>An amount for this booking</option>
+      </select></label>
+      <label class="fld" data-adv-own ${mode === 'own' ? '' : 'hidden'}><span>Advance (${esc(ME.currency)})</span><input type="number" name="advanceAmount" min="1" step="1" value="${mode === 'own' ? own : ''}"><small>Never more than the total</small></label>
+    </div>`;
+  };
+  /** Whether the advance chosen in a booking form asks for one (a reservation with none isn't held). */
+  const advanceNeeded = (form) => {
+    const m = form.advanceMode ? form.advanceMode.value : 'default';
+    return m === 'own' || (m === 'default' && !!(ME.advanceRule && ME.advanceRule.on));
+  };
+  /** The form's advance for the API: '' = as in Booking setup, 0 = none, or the amount. */
+  const advanceBody = (form) => {
+    const m = form.advanceMode.value;
+    if (m === 'default') return '';
+    if (m === 'none') return 0;
+    return Math.round(Number(form.advanceAmount.value)) || 0;
+  };
+
   function toast(msg, bad = false) {
     const t = document.createElement('div');
     t.className = `toast${bad ? ' toast--bad' : ''}`;
@@ -161,10 +212,12 @@
   const modal = $('[data-modal]');
   const modalPanel = $('[data-modal-panel]');
   function openModal(html, cls = '') {
+    if (endSmall) endSmall(); // a small dialog still open answers "no"
     modalPanel.className = `drawer__panel modal${cls ? ` ${cls}` : ''}`;
     modalPanel.innerHTML = html;
     modalPanel.onsubmit = null;
     modalPanel.onclick = null;
+    modalPanel.oninput = null;
     modal.classList.add('is-open');
     modal.setAttribute('aria-hidden', 'false');
     setTimeout(() => { const el = $('input:not([type="checkbox"]), select', modalPanel); if (el) el.focus(); }, 60);
@@ -202,11 +255,93 @@
   }
 
   /**
+   * The admin panel's own small dialogs, instead of the browser's prompt() and confirm() (which can't be
+   * styled, show "localhost says" and block the page). Both resolve once: askDialog with the text typed or
+   * null, confirmBox with true or false. Escape, the scrim and Cancel all count as "no".
+   */
+  const smallHead = (title, sub, ico, tone = '') => `<header class="dr-head dlg-head${tone ? ` dlg-head--${tone}` : ''}">
+    <span class="dlg-badge" aria-hidden="true">${icon(ico, 18)}</span>
+    <div><h2 id="modal-title">${esc(title)}</h2>${sub ? `<p>${esc(sub)}</p>` : ''}</div>
+    <button class="abtn abtn--ghost" type="button" data-mclose aria-label="Close">${icon('a-x', 20)}</button></header>`;
+  let endSmall = null; // the open small dialog's "cancel", so a newer dialog never leaves it hanging
+  /** Open a small dialog; onSubmit(form) returns the answer, or undefined to keep it open (an error shows). */
+  function smallDialog(html, onSubmit, focusSel) {
+    const back = document.activeElement; // focus goes back here afterwards
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (v) => {
+        if (done) return;
+        done = true;
+        endSmall = null;
+        modal.removeEventListener('click', onClose, true);
+        document.removeEventListener('keydown', onKey, true);
+        window.removeEventListener('hashchange', onHash);
+        if (back && back.isConnected) back.focus({ preventScroll: true });
+        resolve(v);
+      };
+      const onClose = (e) => { if (e.target.closest('[data-mclose], [data-modal-close]')) finish(null); };
+      const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); closeModal(); finish(null); } };
+      const onHash = () => finish(null);
+      openModal(html, 'modal--small');
+      endSmall = () => finish(null);
+      modal.addEventListener('click', onClose, true);
+      document.addEventListener('keydown', onKey, true);
+      window.addEventListener('hashchange', onHash);
+      if (focusSel) setTimeout(() => { const el = $(focusSel, modalPanel); if (el) el.focus(); }, 70);
+      modalPanel.onsubmit = (e) => {
+        e.preventDefault();
+        const v = onSubmit(e.target);
+        if (v === undefined) return;
+        closeModal();
+        finish(v);
+      };
+    });
+  }
+  /**
+   * Ask for one line of text. { title, sub, label, placeholder, value, hint, button, max, icon,
+   * validate(text) → an error message or '' } → the text, or null when cancelled
+   */
+  function askDialog({ title, sub = '', label, placeholder = '', value = '', hint = '', button = 'Save', max = 80, icon: ico = 'a-plus', validate = null }) {
+    const p = smallDialog(`${smallHead(title, sub, ico)}<form class="dr-body dlg-body" novalidate>
+      <label class="fld"><span>${esc(label)}</span><input name="answer" maxlength="${max}" value="${esc(value)}" placeholder="${esc(placeholder)}" autocomplete="off" spellcheck="false" aria-describedby="dlg-err"></label>
+      ${hint ? `<p class="dlg-hint">${esc(hint)}</p>` : ''}
+      <p class="dlg-err" id="dlg-err" data-dlg-err role="alert" hidden></p>
+      <div class="dlg-foot"><button type="button" class="abtn" data-mclose>Cancel</button><button class="abtn abtn--primary" type="submit">${icon(ico, 16)}${esc(button)}</button></div>
+    </form>`, (form) => {
+      const v = form.answer.value.trim();
+      const problem = !v ? `Please enter ${label.toLowerCase()}.` : (validate ? validate(v) : '');
+      if (!problem) return v;
+      const err = $('[data-dlg-err]', modalPanel);
+      err.textContent = problem;
+      err.hidden = false;
+      form.answer.setAttribute('aria-invalid', 'true');
+      form.answer.focus();
+      return undefined;
+    });
+    // typing clears the error
+    modalPanel.oninput = () => {
+      const err = $('[data-dlg-err]', modalPanel);
+      if (!err || err.hidden) return;
+      err.hidden = true;
+      $('[name="answer"]', modalPanel).removeAttribute('aria-invalid');
+    };
+    return p;
+  }
+  /** Ask yes or no. { title, text, button, danger, icon } → true / false */
+  async function confirmBox({ title, text = '', button = 'OK', danger = false, icon: ico }) {
+    const yes = await smallDialog(`${smallHead(title, '', ico || (danger ? 'a-trash' : 'a-check'), danger ? 'danger' : '')}<form class="dr-body dlg-body">
+      ${text ? `<p class="dlg-text">${esc(text)}</p>` : ''}
+      <div class="dlg-foot"><button type="button" class="abtn" data-mclose>Cancel</button><button class="abtn ${danger ? 'abtn--danger-solid' : 'abtn--primary'}" type="submit" data-dlg-yes>${danger ? icon(ico || 'a-trash', 16) : ''}${esc(button)}</button></div>
+    </form>`, () => true, '[data-dlg-yes]');
+    return yes === true;
+  }
+
+  /**
    * Record a payment: amount, how it was paid, the extra payment fields (Booking setup), any
    * commission / fee taken off, and a note. submit(payment) may return a function to run once
    * the dialog has closed (e.g. showing the receipt).
    */
-  function paymentDialog({ title, sub, suggested = 0, method = 'cash', submit, commission = null }) {
+  function paymentDialog({ title, sub, suggested = 0, method = 'cash', submit, commission = null, guestSlips = [] }) {
     const fields = (ME && ME.paymentFields) || [];
     openModal(`${modalHead(title, sub)}<form class="dr-body">
       <div class="grid2">
@@ -214,17 +349,20 @@
         <label class="fld"><span>Paid by</span><select name="method">${methodOptions(method)}</select></label>
         ${S.payFieldsHtml(fields, { commission, money })}
         <label class="fld span2"><span>Note <small>(optional)</small></span><input name="note" maxlength="255" placeholder="e.g. Advance, bank slip 4411"></label>
+        ${S.slipFieldHtml('Payment slip', { guestSlips, money })}
       </div>
       <div class="dlg-foot"><button type="button" class="abtn" data-mclose>Cancel</button><button class="abtn abtn--primary" type="submit">Record payment</button></div>
     </form>`);
     S.bindPayFields(modalPanel, $('[name="method"]', modalPanel));
+    S.bindSlipField(modalPanel, $('[name="amount"]', modalPanel));
     modalPanel.onsubmit = async (e) => {
       e.preventDefault();
       const f = e.target;
       const btn = $('[type="submit"]', f);
       btn.disabled = true;
       try {
-        const then = await submit({ amount: Number(f.amount.value), method: f.method.value, note: f.note.value, ...S.readPayFields(f, fields) });
+        const slip = await S.formSlip(f);
+        const then = await submit({ amount: Number(f.amount.value), method: f.method.value, note: f.note.value, ...S.readPayFields(f, fields), slip });
         closeModal();
         if (typeof then === 'function') then();
       } catch (ex) { toast(ex.message, true); btn.disabled = false; }
@@ -270,7 +408,9 @@
 
   async function start() {
     ME = await api('/me');
-    ROOMS = can('bookings') ? (await api('/rooms')).rooms : [];
+    const rr = can('bookings') ? await api('/rooms') : { rooms: [], categories: [] };
+    ROOMS = rr.rooms;
+    CATS = rr.categories || [];
     $('[data-login]').hidden = true;
     $('[data-app]').hidden = false;
     $('[data-user]').textContent = ME.name || ME.username;
@@ -307,7 +447,7 @@
     return { path, q: new URLSearchParams(qs || '') };
   }
   let lastScreen = '';
-  const PAGE_PERM = { overview: 'bookings', calendar: 'bookings', bookings: 'bookings', new: 'bookings', menu: 'menu', coupons: 'coupons', finance: 'finance', bills: 'pos', setup: 'setup', website: 'site', rooms: 'setup', users: 'users' };
+  const PAGE_PERM = { overview: 'bookings', calendar: 'bookings', bookings: 'bookings', new: 'bookings', menu: 'menu', coupons: 'coupons', finance: 'finance', bills: 'pos', setup: 'setup', website: 'site', chatbot: 'site', rooms: 'setup', rates: 'setup', users: 'users' };
   async function route() {
     if (!ME) return;
     document.body.classList.remove('side-open');
@@ -341,7 +481,9 @@
       else if (name === 'bills') await POS.bills(parts.slice(1), q);
       else if (name === 'setup') await SETUP.setup();
       else if (name === 'website') await SITE.website();
+      else if (name === 'chatbot') await CHAT.chatbot();
       else if (name === 'rooms') await viewRooms();
+      else if (name === 'rates') await RATES.rates();
       else if (name === 'settings') await viewSettings();
       else location.hash = '#/';
     } catch (e) {
@@ -357,14 +499,17 @@
 
   // the POS menu + bills (admin-pos.js), booking setup (admin-setup.js), the website (admin-site.js) and coupons (admin-coupons.js)
   const helpers = {
-    $, $$, esc, icon, money, fd, fdt, api, toast, setHead, view, st, today, openModal, closeModal, modalHead, methodOptions, reasonDialog, paymentDialog,
+    $, $$, esc, icon, money, fd, fdt, api, toast, setHead, view, st, today, openModal, closeModal, modalHead, methodOptions, reasonDialog, paymentDialog, askDialog, confirmBox,
     openLibrary, img, hasPhoto: (k) => !!MEDIA[k], showReceipt, showInvoice, can, fdt,
     currency: () => (ME && ME.currency) || 'LKR', me: () => ME, refreshMe: async () => { ME = await api('/me'); return ME; },
   };
   const POS = window.YDPOS(helpers);
   const SETUP = window.YDSETUP(helpers);
   const SITE = window.YDSITE(helpers);
+  const CHAT = window.YDCHAT(helpers);
   const COUPONS = window.YDCOUPONS(helpers);
+  const RATES = window.YDRATES(helpers); // the room rate sheet (admin-rates.js)
+  const CONFIRM = window.YDCONFIRM(helpers); // links for guests to check and confirm a booking (admin-confirm.js)
   const USERS = window.YDUSERS(helpers);
   const FIN = window.YDFINANCE(helpers);
 
@@ -373,7 +518,7 @@
     return `<li><div class="brow" role="button" tabindex="0" data-open="${b.id}">
       <div><b>${esc(b.guestName)}</b> <span class="src">· ${esc(b.ref)}</span>
         <div class="brow__meta">${esc(whatOf(b))} · ${whenOf(b)} · ${guests(b)}${extrasOf(b).length ? ` · ${esc(extrasOf(b).join(', '))}` : ''}${holdText(b) ? ` · <span class="hold">${esc(holdText(b))}</span>` : ''}</div></div>
-      <div class="brow__right">${st(b.status)}<span class="src">${esc(b.sourceLabel)}</span></div>
+      <div class="brow__right">${st(b.status)}${CONFIRM.chip(b)}${b.slipWaiting ? '<span class="gc-chip gc-chip--slip" title="The guest sent a payment slip that is not recorded yet">🧾 Slip sent</span>' : ''}<span class="src">${esc(b.sourceLabel)}</span></div>
       ${actions ? `<div class="brow__actions">
         <button class="abtn abtn--sm abtn--primary" type="button" data-quick="confirmed" data-id="${b.id}">Confirm</button>
         <button class="abtn abtn--sm abtn--danger" type="button" data-quick="cancelled" data-id="${b.id}">Decline</button>
@@ -412,21 +557,23 @@
   async function confirmDialog(id, onDone) {
     let b;
     let choices = [];
+    let guestSlips = []; // payment slips the guest sent from their invoice link
     try {
-      b = (await api(`/bookings/${id}`)).booking;
+      ({ booking: b, guestSlips = [] } = await api(`/bookings/${id}`));
       if (isGroup(b)) choices = (await api(`/bookings/${id}/rooms`)).rooms;
     } catch (ex) { toast(ex.message, true); return; }
     const need = b.adults + b.children;
     const fields = ME.paymentFields || [];
-    const advance = ME.advancePct ? Math.round((b.totalAmount * ME.advancePct) / 100) : 0;
+    const asked = b.advance || { required: true, amount: 0 };
     openModal(`${modalHead(`Confirm ${b.guestName}`, `${b.ref} · ${whatOf(b)} · ${whenOf(b)} · ${money(b.totalAmount)}`)}
       <form class="dr-body">
-        <p class="section-title">Advance received</p>
+        <p class="section-title">${asked.required ? `Advance received <small class="src">· asked: ${esc(advanceText(asked))}</small>` : 'Payment received <small class="src">· no advance asked for this booking</small>'}</p>
         <div class="grid2">
-          <label class="fld"><span>Amount (${esc(ME.currency)}) <small>leave empty if none yet</small></span><input type="number" name="amount" min="0" step="1" placeholder="${advance || ''}"></label>
+          <label class="fld"><span>Amount (${esc(ME.currency)}) <small>${asked.required ? 'leave empty if none yet' : 'optional — leave empty if they pay at the resort'}</small></span><input type="number" name="amount" min="0" step="1" placeholder="${asked.required && asked.amount ? asked.amount : ''}"></label>
           <label class="fld"><span>Paid by</span><select name="method">${methodOptions('bank')}</select></label>
           ${S.payFieldsHtml(fields, { commission: b.commission, money })}
           <label class="fld span2"><span>Note <small>(optional)</small></span><input name="note" maxlength="255" placeholder="e.g. Bank slip 4411"></label>
+          ${S.slipFieldHtml('Advance payment slip', { guestSlips, money })}
         </div>
         ${isGroup(b) ? roomPicker(choices, need) : ''}
         ${b.guestEmail ? '<label class="chk"><input type="checkbox" name="notify" checked> Email the guest that the booking is confirmed</label>' : ''}
@@ -434,6 +581,7 @@
       </form>`);
     bindRoomPicker(modalPanel, need);
     S.bindPayFields(modalPanel, $('[name="method"]', modalPanel));
+    S.bindSlipField(modalPanel, $('[name="amount"]', modalPanel)); // the guest's slip fills in what they paid
     modalPanel.onsubmit = async (e) => {
       e.preventDefault();
       const f = e.target;
@@ -442,14 +590,18 @@
       const amount = Math.round(Number(f.amount.value)) || 0;
       // a slip typed with an extra digit: check before it goes on the receipt
       if (amount > b.totalAmount && !confirm(`${money(amount)} is more than the whole booking (${money(b.totalAmount)}). Record it anyway?`)) { f.amount.focus(); return; }
+      const btn = $('[type="submit"]', f);
+      btn.disabled = true;
       try {
-        const adv = amount > 0 ? { amount, method: f.method.value, note: f.note.value, ...S.readPayFields(f, fields) } : null;
+        const file = S.slipFile(f);
+        if (file && amount <= 0) { f.amount.focus(); throw new Error('Enter the advance amount for this slip, or remove the slip.'); }
+        const adv = amount > 0 ? { amount, method: f.method.value, note: f.note.value, ...S.readPayFields(f, fields), slip: file ? await S.uploadSlip(file) : S.guestSlipKey(f) } : null;
         const r = await api(`/bookings/${b.id}/confirm`, { method: 'POST', body: { rooms, advance: adv, notifyGuest: !!(f.notify && f.notify.checked) } });
         closeModal();
         toast(`${r.booking.ref} confirmed${r.advance ? ` — ${money(r.advance)} advance recorded` : ''}${r.emailed ? ' — guest emailed' : ''}`);
         if (onDone) onDone(r.booking);
         if (r.payment) showReceipt(r.payment, r.booking); // print or share the receipt for the advance
-      } catch (ex) { toast(ex.message, true); }
+      } catch (ex) { toast(ex.message, true); btn.disabled = false; }
     };
   }
 
@@ -733,14 +885,14 @@
       <tbody>${bookings.map((b) => `<tr data-open="${b.id}">
         <td class="ref">${esc(b.ref)}</td>
         <td><b>${esc(b.guestName)}</b><span class="sub">${esc(b.guestPhone || b.guestEmail || '')}</span></td>
-        <td>${esc(b.kind === 'room' ? b.roomName : b.packageLabel)}<span class="sub">${esc([b.source === 'block' ? 'Blocked' : '', isGroup(b) ? b.roomName || 'No rooms yet' : '', ...extrasOf(b)].filter(Boolean).join(' · '))}</span></td>
+        <td>${esc(b.kind === 'room' ? b.roomName : b.packageLabel)}<span class="sub">${esc([b.source === 'block' ? 'Blocked' : '', b.wholeCategory ? `${b.wholeCategory.name} ${b.wholeCategory.label.toLowerCase()}` : '', b.mealPlanLabel || '', isGroup(b) ? b.roomName || 'No rooms yet' : '', ...extrasOf(b)].filter(Boolean).join(' · '))}</span></td>
         <td>${isDayOut(b)
           ? `${fd(b.checkIn, { day: 'numeric', month: 'short', year: '2-digit' })}<span class="sub">Day visit</span>`
           : `${fd(b.checkIn)} → ${fd(b.checkOut, { day: 'numeric', month: 'short', year: '2-digit' })}<span class="sub">${b.nights} night${b.nights > 1 ? 's' : ''}</span>`}</td>
         <td>${guests(b)}</td>
         <td class="num">${money(b.totalAmount)}</td>
         <td>${esc(b.sourceLabel)}</td>
-        <td>${st(b.status)}</td>
+        <td>${st(b.status)}${CONFIRM.chip(b) ? `<span class="sub">${CONFIRM.chip(b)}</span>` : ''}${b.slipWaiting ? '<span class="sub"><span class="gc-chip gc-chip--slip" title="The guest sent a payment slip that is not recorded yet">🧾 Slip sent</span></span>' : ''}</td>
       </tr>`).join('')}</tbody></table></div>
       <div class="tbl-foot">${bookings.length} booking${bookings.length > 1 ? 's' : ''} · ${money(total)} excluding cancelled</div>`;
   }
@@ -774,8 +926,10 @@
     try { folio = (await api(`/pos/folios/${id}`)).folio; } catch (e) { panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
     renderDrawer(folio.booking, folio);
     if (openInvoiceFor === id && folio.invoiceUrl) { openInvoiceFor = 0; showInvoice(folio.booking, folio.invoiceUrl); } // a new reservation
+    if (openConfirmFor === id) { openConfirmFor = 0; CONFIRM.dialog(folio.booking, () => reloadDrawer(id)); } // a new booking for the guest to confirm
   }
   let openInvoiceFor = 0;
+  let openConfirmFor = 0;
   /** After a change: show the booking again, and refresh the page behind it once the drawer closes. */
   const reloadDrawer = (id) => { drawerDirty = true; return openBooking(id, true); };
 
@@ -844,6 +998,8 @@
           <div class="kv">
             ${isBlock ? `<div><small>Room</small>${esc(b.roomName)}</div><div><small>Dates</small>${fd(b.checkIn)} → ${fd(b.checkOut, long)} · ${b.nights}n</div>` : `
             <div${b.kind === 'room' && b.rooms.length > 1 ? ' class="kv-wide"' : ''}><small>${esc(b.kind === 'room' && b.rooms.length > 1 ? `${b.rooms.length} rooms` : kindTitle)}</small>${esc(b.kind === 'room' ? b.roomName : b.packageLabel)}${b.kind === 'room' && canRooms ? ' <button type="button" class="linkbtn" data-rooms>Add or change rooms</button>' : ''}</div>
+            ${b.kind === 'room' && b.mealPlan ? `<div><small>Meal plan</small>${esc(b.mealPlan)} · ${esc(b.mealPlanLabel)}</div>` : ''}
+            ${b.wholeCategory ? `<div class="kv-wide"><small>Whole villa</small>${esc(b.wholeCategory.name)} — ${esc(b.wholeCategory.label)} <span class="src">· one price for all its rooms</span></div>` : ''}
             <div><small>${b.kind === 'room' ? 'Sleeps' : 'Guests'}</small>${b.kind === 'room' ? `${b.capacity} guest${b.capacity === 1 ? '' : 's'}` : guestsLong}</div>
             ${group ? `<div class="kv-wide"><small>Rooms</small>${b.rooms.length ? `${esc(b.roomName)} <span class="src">· sleep ${b.capacity}</span>` : '<b class="is-due">None yet</b>'}${canRooms ? ' <button type="button" class="linkbtn" data-rooms>Change rooms</button>' : ''}</div>` : ''}
             ${partyB ? `<div><small>Time</small>${esc(b.arrivalTime || '—')}</div>
@@ -856,25 +1012,34 @@
             ${b.guestIdNo ? `<div><small>NIC / passport</small>${esc(b.guestIdNo)}</div>` : ''}
             ${b.country ? `<div><small>Country</small>${esc(b.country)}</div>` : ''}
             ${isBlock ? '' : priceKv(b)}
+            ${isBlock || !['pending', 'confirmed'].includes(b.status) ? '' : `<div><small>Advance</small>${esc(advanceText(b.advance))}</div>`}
             ${billOpen || (t && t.paid) ? `<div><small>Paid so far</small>${money(t.paid)}${t.fees ? ` <span class="src">${money(t.received)} reached your accounts (${money(t.fees)} kept by the agent or bank)</span>` : ''}</div><div><small>Balance</small>${money(t.balance)}${t.items ? ` <span class="src">incl. ${money(t.items)} of items</span>` : ''}</div>` : ''}
           </div>
           ${b.specialRequests ? `<div class="note note--info"><b>Guest requests:</b> ${esc(b.specialRequests)}</div>` : ''}
-          ${b.status === 'pending' && !isBlock ? `<div class="note note--warn">${b.holdUntil
+          ${b.status === 'pending' && !isBlock ? (b.advance && !b.advance.required
+            ? `<div class="note note--info"><b>Reservation</b> — no advance asked: the guest pays at the resort, and it is not released automatically. Confirm it once you have spoken to the guest. To ask for an advance after all, change <b>Advance</b> below.</div>`
+            : `<div class="note note--warn">${b.holdUntil
             ? `<b>Reservation</b> held until <b>${fd(b.holdUntil, long)}</b> (${esc(holdText(b).split(' · ')[1])}). If no advance is recorded by then, it is released and the dates open again.`
             : '<b>Reservation</b> waiting for the advance (it is not released automatically).'}
-            Send the invoice, then confirm the booking when the advance is paid — record the advance as you confirm and print the receipt.</div>` : ''}
+            Send the invoice, then confirm the booking when the advance is paid — record the advance as you confirm and print the receipt.</div>`) : ''}
           ${nextActions(b).length ? `<div class="dr-actions">
             ${nextActions(b).map(([s, l, c]) => `<button type="button" class="abtn ${c}" data-set-status="${s}">${l}</button>`).join('')}
             ${b.guestEmail ? '<label class="chk"><input type="checkbox" data-notify checked> Email the guest</label>' : ''}
           </div>` : ''}
           ${!isBlock && folio && folio.invoiceUrl ? `<div class="dr-actions">
             <button type="button" class="abtn${b.status === 'pending' ? ' abtn--amber' : ''}" data-invoice>${icon('a-doc', 16)}${b.status === 'pending' ? 'Send the invoice' : 'Invoice'}</button>
-            ${['confirmed', 'pending'].includes(b.status) && b.guestEmail ? `<button type="button" class="abtn" data-remind title="Email this guest ${b.status === 'pending' ? 'a payment' : 'an arrival'} reminder now">${icon('a-mail', 16)}Send reminder</button>` : ''}
+            ${(b.status === 'confirmed' || (b.status === 'pending' && b.advance && b.advance.required)) && b.guestEmail ? `<button type="button" class="abtn" data-remind title="Email this guest ${b.status === 'pending' ? 'a payment' : 'an arrival'} reminder now">${icon('a-mail', 16)}Send reminder</button>` : ''}
           </div>` : ''}
+          ${isBlock ? '' : '<div data-gc-slot></div>'}
+          ${folio && folio.guestSlips && folio.guestSlips.length ? `<div class="pay-list"><p class="section-title">Payment slips from the guest</p>${folio.guestSlips.map((s) => `<div class="pay-row${s.paymentId ? '' : ' is-new'}">
+            <div><b>${s.amount ? money(s.amount) : 'Amount not given'}</b> <span class="src">· sent ${fdt(s.uploadedAt)}</span>
+              <span class="pay-row__sub">${esc([s.note && `“${s.note}”`, s.paymentId ? `Recorded as ${s.receiptNo}` : `Not recorded yet — check it, then ${b.status === 'pending' ? 'confirm the booking' : 'record the payment'}`].filter(Boolean).join(' · '))}</span></div>
+            <span class="pay-row__acts"><a class="abtn abtn--sm" href="${esc(s.url)}" target="_blank" rel="noopener" title="Open the slip the guest sent">${icon('a-ext', 15)}Open slip</a></span>
+          </div>`).join('')}</div>` : ''}
           ${pays.length ? `<div class="pay-list"><p class="section-title">Payments</p>${pays.map((p) => `<div class="pay-row">
             <div><b>${money(p.amount)}</b> · ${esc(p.methodLabel)} <span class="src">· ${fdt(p.createdAt)}</span>
               ${payInfo(p, b) ? `<span class="pay-row__sub">${esc(payInfo(p, b))}</span>` : ''}</div>
-            <button type="button" class="abtn abtn--sm" data-receipt="${p.id}" title="Print or share the receipt">${icon('a-print', 15)}${esc(p.receiptNo)}</button>
+            <span class="pay-row__acts">${S.slipLink(p, true)}<button type="button" class="abtn abtn--sm" data-receipt="${p.id}" title="Print or share the receipt">${icon('a-print', 15)}${esc(p.receiptNo)}</button></span>
           </div>`).join('')}</div>` : ''}
           ${isBlock ? '' : b.billId ? `<div class="dr-actions"><a class="abtn" href="#/bills/${b.billId}">${icon('a-bill', 16)}Bill INV-${String(b.billId).padStart(5, '0')}</a></div>`
             : billOpen ? `<div class="dr-actions">
@@ -892,6 +1057,7 @@
           <div class="card__body grid2">
             ${isBlock ? '' : `<label class="fld span2"><span>Booking</span><select name="what">${kindOptions(kindValue(b))}</select></label>`}
             <label class="fld span2" data-room-f><span>${b.kind === 'room' && b.rooms.length > 1 ? `Main room <small>· also ${esc(b.rooms.filter((x) => x.id !== b.roomId).map((x) => x.name).join(', '))} (Add or change rooms, above)</small>` : 'Room'}</span><select name="roomId">${ROOMS.map((r) => `<option value="${r.id}" ${r.id === b.roomId ? 'selected' : ''}>${esc(r.name)} — ${esc(r.type)} · sleeps ${r.capacity}</option>`).join('')}</select></label>
+            ${isBlock ? '' : planFields(b.mealPlan || 'RO', b.wholeCategoryId)}
             <label class="fld"><span data-in-label>Check-in</span><input type="date" name="checkIn" value="${b.checkIn}" required></label>
             <label class="fld" data-stay-f><span>Check-out</span><input type="date" name="checkOut" value="${b.checkOut}"></label>
             ${isBlock ? '' : `<label class="fld"><span>Adults</span><input type="number" name="adults" min="0" max="50" value="${b.adults}"></label>
@@ -906,7 +1072,8 @@
             <label class="fld"><span>Country</span><input name="country" value="${esc(b.country)}" maxlength="60"></label>
             <label class="fld"><span>Source</span><select name="source">${Object.entries(ME.sources).map(([k, l]) => `<option value="${k}" ${k === b.source ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
             <label class="fld"><span>Status</span><select name="status">${Object.entries(STATUS).map(([k, l]) => `<option value="${k}" ${k === b.status ? 'selected' : ''}>${k === 'pending' ? 'Pending (reservation)' : l}</option>`).join('')}</select></label>
-            ${isBlock ? '' : `<label class="fld" data-hold-f><span>Reservation held until <small>empty = not released</small></span><input type="date" name="holdUntil" value="${esc(b.holdUntil || '')}" min="${today()}"><small>No advance by then → released automatically.</small></label>
+            ${isBlock ? '' : `${advanceFields(b.advance ? b.advance.own : null)}
+            <label class="fld" data-hold-f><span>Reservation held until <small>empty = not released</small></span><input type="date" name="holdUntil" value="${esc(b.holdUntil || '')}" min="${today()}"><small>No advance by then → released automatically.</small></label>
             ${rateFields(b.rates, b.listRates)}`}
             <label class="fld"><span>Total (${esc(ME.currency)})${b.couponCode ? ` <small>after coupon ${esc(b.couponCode)}</small>` : ''}</span><input type="number" name="totalAmount" min="0" step="1" value="${b.totalAmount}"></label>
             ${isBlock ? '' : commissionFields(b.commission)}
@@ -918,6 +1085,7 @@
       </div>`;
 
     $('[data-dclose]', panel).onclick = closeDrawer;
+    if (!isBlock) CONFIRM.mount($('[data-gc-slot]', panel), b, () => reloadDrawer(b.id)); // the guest's confirmation link
     panel.onclick = async (e) => {
       if (e.target.closest('a[href^="#/"]')) { closeDrawer(true); return; } // going to a bill
       if (e.target.closest('[data-rooms]')) { roomsDialog(b, () => reloadDrawer(b.id)); return; }
@@ -936,7 +1104,7 @@
       if (rc) { const p = pays.find((x) => x.id === Number(rc.dataset.receipt)); if (p) showReceipt(p, b); return; }
       if (e.target.closest('[data-pay]')) {
         paymentDialog({
-          title: 'Record a payment', sub: `${b.guestName} · ${b.ref}. An advance or part payment counts towards the final bill.`, method: 'bank', commission: b.commission,
+          title: 'Record a payment', sub: `${b.guestName} · ${b.ref}. An advance or part payment counts towards the final bill.`, method: 'bank', commission: b.commission, guestSlips: folio.guestSlips,
           submit: async (p) => {
             const r = await api(`/pos/folios/${b.id}/payments`, { method: 'POST', body: p });
             toast(`${money(p.amount)} recorded`);
@@ -967,7 +1135,7 @@
     const syncFields = () => {
       const k = kindNow();
       $$('[data-stay-f], [data-party-f]', form).forEach((el) => { el.hidden = k === 'day_out' || k === 'event'; });
-      $$('[data-room-f]', form).forEach((el) => { el.hidden = k !== 'room'; });
+      $$('[data-room-f], [data-plan-f]', form).forEach((el) => { el.hidden = k !== 'room'; });
       $$('[data-event-f]', form).forEach((el) => { el.hidden = k !== 'event'; });
       $('[data-in-label]', form).textContent = k === 'day_out' || k === 'event' ? 'Date' : 'Check-in';
       if (!isBlock) {
@@ -976,9 +1144,12 @@
         form.children.max = k === 'event' ? 1000 : 30;
         syncRates(form, k);
         if (k === 'event') $$('[data-rate-f]', form).forEach((el) => { el.hidden = true; }); // a party has an agreed price
-        $('[data-hold-f]', form).hidden = form.status.value !== 'pending';
-        // back to a reservation: it waits the usual days for its advance
-        if (form.status.value === 'pending' && b.status !== 'pending' && !form.holdUntil.value) form.holdUntil.value = defaultHold(form.checkIn.value);
+        // the hold date is for a reservation waiting for its advance
+        const held = form.status.value === 'pending' && advanceNeeded(form);
+        $('[data-hold-f]', form).hidden = !held;
+        $('[data-adv-own]', form).hidden = form.advanceMode.value !== 'own';
+        // back to a reservation, or one that now asks for an advance: it waits the usual days for it
+        if (held && (b.status !== 'pending' || !(b.advance && b.advance.required)) && !form.holdUntil.value) form.holdUntil.value = defaultHold(form.checkIn.value);
         commissionHint(form);
       }
     };
@@ -989,10 +1160,10 @@
     let seq = 0;
     form.addEventListener('change', async (e) => {
       const name = e.target.name;
-      if (name === 'status' || /^commission/.test(name)) { syncFields(); return; }
-      // a different option or kind starts from the price list
-      if (name === 'what' && !isBlock) ['rateRoom', 'rateAdult', 'rateChild'].forEach((n) => { form[n].value = ''; });
-      if (!['what', 'roomId', 'checkIn', 'checkOut', 'adults', 'children', 'partyArea', 'jblSpeaker', 'rateRoom', 'rateAdult', 'rateChild', 'eventSlot', 'eventOthers'].includes(name)) return;
+      if (name === 'status' || name === 'advanceMode' || /^commission/.test(name)) { syncFields(); return; }
+      // a different option or kind, meal plan or whole villa starts from the price list
+      if (['what', 'mealPlan', 'wholeCategory'].includes(name) && !isBlock) ['rateRoom', 'rateAdult', 'rateChild'].forEach((n) => { form[n].value = ''; });
+      if (!['what', 'roomId', 'checkIn', 'checkOut', 'adults', 'children', 'partyArea', 'jblSpeaker', 'rateRoom', 'rateAdult', 'rateChild', 'eventSlot', 'eventOthers', 'mealPlan', 'wholeCategory'].includes(name)) return;
       syncFields();
       const k = kindNow();
       const out = $('[data-avail]', panel);
@@ -1037,12 +1208,21 @@
       // a total typed by hand wins; otherwise the server prices what changed (agreed rates, coupon and all)
       if (totalTouched) body.totalAmount = form.totalAmount.value === '' ? '' : Number(form.totalAmount.value);
       if (!isBlock) Object.assign(body, kind === 'event' ? {} : rateBody(form, kind), commissionBody(form));
-      if (!isBlock && form.status.value === 'pending') body.holdUntil = form.holdUntil.value;
+      if (!isBlock) {
+        if (form.advanceMode.value === 'own' && !(Number(form.advanceAmount.value) >= 1)) { toast('Enter the advance for this booking, or choose another option.', true); form.advanceAmount.focus(); return; }
+        body.advanceAmount = advanceBody(form);
+      }
+      if (!isBlock && form.status.value === 'pending' && advanceNeeded(form)) body.holdUntil = form.holdUntil.value;
       if (!isBlock) body.guestIdNo = form.guestIdNo.value;
       if (!isBlock) Object.assign(body, { adults: Number(form.adults.value || 0), children: Number(form.children.value || 0), partyArea: !dayOut && form.partyArea.checked, jblSpeaker: form.jblSpeaker.checked });
       if (kind === 'event') Object.assign(body, partyBody(form)); // day or night, the time, and what other guests can book
       if (whatChanged) Object.assign(body, { kind, packageId });
       if (kind === 'room' && (whatChanged || Number(form.roomId.value) !== original.roomId)) body.roomId = Number(form.roomId.value);
+      if (kind === 'room' && !isBlock) {
+        if (whatChanged || form.mealPlan.value !== (b.mealPlan || 'RO')) body.mealPlan = form.mealPlan.value;
+        const whole = form.wholeCategory.value ? Number(form.wholeCategory.value) : null;
+        if (whole !== b.wholeCategoryId) body.wholeCategory = whole === null ? '' : whole; // its rooms join the booking
+      }
       // don't send unchanged dates (avoids needless re-checks of past stays)
       if (whatChanged || form.checkIn.value !== original.checkIn || (!dayOut && form.checkOut.value !== original.checkOut)) {
         body.checkIn = form.checkIn.value;
@@ -1059,8 +1239,11 @@
   // ================= NEW BOOKING =================
   async function viewNew(q) {
     setHead('New booking', 'Enter a booking from phone, WhatsApp, walk-in or another website — it blocks those dates on the website straight away.');
-    ROOMS = (await api('/rooms')).rooms;
-    const room = q.get('room') || (ROOMS.find((r) => r.active) || ROOMS[0] || {}).id;
+    const rr = await api('/rooms');
+    ROOMS = rr.rooms;
+    CATS = rr.categories || [];
+    const plan0 = PLANS().some((p) => p.code === q.get('plan')) ? q.get('plan') : 'RO';
+    const whole0 = CATS.find((c) => c.whole && String(c.id) === q.get('whole')) || null;
     const first = (kind) => ME.packages.find((p) => p.kind === kind && p.active) || ME.packages.find((p) => p.kind === kind);
     const asked = ME.packages.find((p) => String(p.id) === q.get('packageId'))
       || (q.get('kind') === 'per_person' ? first('stay') : q.get('kind') === 'day_out' ? first('day') : null);
@@ -1073,15 +1256,27 @@
         <div class="grid4">
           <label class="fld span2" data-guest-f><span>Booking</span><select name="what">${kindOptions(what)}</select></label>
           <label class="fld"><span>Source</span><select name="source">${Object.entries(ME.sources).filter(([k]) => k !== 'website').map(([k, l]) => `<option value="${k}" ${k === 'phone' ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>
-          <label class="fld"><span>Status</span><select name="status">${[['pending', 'Reservation — waiting for the advance'], ['confirmed', 'Confirmed'], ['checked_in', 'Checked in']].map(([k, l]) => `<option value="${k}" ${(q.get('status') || 'pending') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+          <label class="fld"><span>Status</span><select name="status">${[['pending', ME.advanceRule && !ME.advanceRule.on ? 'Reservation — to confirm' : 'Reservation — waiting for the advance'], ['confirmed', 'Confirmed'], ['checked_in', 'Checked in']].map(([k, l]) => `<option value="${k}" ${(q.get('status') || 'pending') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
           <label class="fld" data-hold-f hidden><span>Hold until <small>then released</small></span><input type="date" name="holdUntil" min="${today()}"><small>If no advance is recorded by then, the dates open again. Empty = never.</small></label>
-          <label class="fld span2" data-room-f><span>Room</span><select name="roomId">${ROOMS.map((r) => `<option value="${r.id}" ${String(r.id) === String(room) ? 'selected' : ''}>${esc(r.name)} — ${esc(r.type)} · sleeps ${r.capacity}${r.active ? '' : ' (hidden)'}</option>`).join('')}</select></label>
           <label class="fld"><span data-in-label>Check-in</span><input type="date" name="checkIn" value="${ci}" required></label>
           <label class="fld" data-stay-f><span>Check-out</span><input type="date" name="checkOut" value="${co}"></label>
           <label class="fld" data-guest-f><span>Adults <small data-opt-guests>(optional)</small></span><input type="number" name="adults" min="0" max="50" value="${what === 'room' ? 0 : 2}"></label>
           <label class="fld" data-guest-f><span>Children</span><input type="number" name="children" min="0" max="30" value="0"></label>
           <label class="chk" data-guest-f data-party-f><input type="checkbox" name="partyArea" ${q.get('partyArea') === '1' ? 'checked' : ''}> Party area</label>
           <label class="chk" data-guest-f><input type="checkbox" name="jblSpeaker"> JBL speaker</label>
+        </div>
+        <!-- room bookings: pick the rooms (as on the rate sheet), the meal plan, or a whole villa -->
+        <div class="rpick" data-room-f>
+          <div class="rpick__head">
+            <p class="section-title">Rooms <span class="rpick__sum" data-rpick-sum></span></p>
+            <div class="rpick__plans" data-plan-f role="radiogroup" aria-label="Meal plan">
+              ${PLANS().map((p) => `<label class="rpick__plan" title="${esc(p.includes || p.name)}"><input type="radio" name="planPick" value="${esc(p.code)}" ${p.code === plan0 ? 'checked' : ''}><b>${esc(p.code)}</b>${esc(p.name)}</label>`).join('')}
+              <input type="hidden" name="mealPlan" value="${esc(plan0)}"><input type="hidden" name="wholeCategory" value="${whole0 ? whole0.id : ''}">
+            </div>
+          </div>
+          <input type="hidden" name="roomId" value="">
+          <div class="rpick__cats" data-rpick-list></div>
+          <p class="src">Tap rooms to put them in this booking (several rooms are one booking and one bill), or take a whole villa at its one price. Booked rooms show the booking that has them.</p>
         </div>
         ${partyFields({})}
         <div class="room-pick" data-group-f hidden>
@@ -1105,12 +1300,14 @@
           ${rateFields({}, {})}
           <label class="fld"><span>Total (${esc(ME.currency)})</span><input type="number" name="totalAmount" min="0" step="1"><small data-total-hint></small></label>
           ${commissionFields({})}
+          ${advanceFields(null)}
         </div>
         <p class="section-title">Notes</p>
         <div class="grid3">
           <label class="fld span3"><span>Private notes</span><input name="adminNotes" maxlength="2000" placeholder="e.g. Booking.com ref 123456"></label>
         </div>
         <label class="chk" data-guest-f data-notify-f><input type="checkbox" name="notifyGuest"> Email a confirmation to the guest (needs an email address)</label>
+        <label class="chk" data-guest-f><input type="checkbox" name="sendConfirm"> Then send the guest a link to check the booking, fill in any missing details (NIC / passport, email…) and confirm it</label>
       </div>
       <div class="form-foot">
         <span class="src">A reservation holds the dates while the guest pays the advance — you can send them the invoice as soon as it is saved. Choose “Blocked dates” as the source to close a room for maintenance or owner use.</span>
@@ -1125,8 +1322,84 @@
     form.totalAmount.addEventListener('input', () => { totalTouched = true; });
     form.holdUntil.addEventListener('input', () => { holdTouched = true; });
     form.addEventListener('input', (e) => { if (/^(commission|totalAmount)/.test(e.target.name)) commissionHint(form); });
-    // a different option starts from the price list
+    // a different option, meal plan or whole villa starts from the price list
     form.what.addEventListener('change', () => ['rateRoom', 'rateAdult', 'rateChild'].forEach((n) => { form[n].value = ''; }));
+    // ---- the room picker: rooms by category, priced for the meal plan, free or booked on the dates ----
+    const pickBox = $('[data-rpick-list]', form);
+    let sel = ROOMS.filter((r) => String(r.id) === String(q.get('room'))).map((r) => r.id); // chosen rooms, the main room first
+    let taken = {}; // room id -> the booking that has it on these dates
+    const roomById = (id) => ROOMS.find((r) => r.id === id) || {};
+    const catRoomIds = (c) => ROOMS.filter((r) => r.categoryId === c.id && r.active).map((r) => r.id);
+    const plan = () => form.mealPlan.value || 'RO';
+    const priceOf = (r) => Number((r.prices || {})[plan()]) || 0;
+    const wholeCat = () => CATS.find((c) => c.whole && String(c.id) === form.wholeCategory.value) || null;
+    if (wholeCat()) sel = [...new Set([...catRoomIds(wholeCat()), ...sel])];
+    function syncPick() {
+      const w = wholeCat(); // a whole villa stays only while every room of it is chosen
+      if (w && !catRoomIds(w).every((id) => sel.includes(id))) form.wholeCategory.value = '';
+      form.roomId.value = sel[0] || '';
+    }
+    function renderPick() {
+      const isBlock = form.source.value === 'block';
+      const w = isBlock ? null : wholeCat();
+      const tile = (r) => {
+        const on = sel.includes(r.id);
+        const busy = taken[r.id] !== undefined;
+        const price = priceOf(r);
+        const off = !on && (busy || (!isBlock && !price));
+        const state = busy ? `Booked${taken[r.id] ? ` · ${esc(taken[r.id])}` : ''}` : w && r.categoryId === w.id ? 'In the whole villa' : 'Free';
+        return `<button type="button" class="rpick__room${on ? ' is-on' : ''}${busy ? ' is-busy' : ''}" data-pick-room="${r.id}" aria-pressed="${on}" ${off ? 'disabled' : ''}>
+          <b>${esc(r.name)}</b><small>${esc(r.label || r.type)} · sleeps ${r.capacity}${r.active ? '' : ' · hidden'}</small>
+          ${isBlock ? '' : `<span class="rpick__price">${price ? `${money(price)} / night` : `No ${esc(planName(plan()).toLowerCase())}`}</span>`}
+          <span class="rpick__st">${state}</span>
+        </button>`;
+      };
+      const groups = CATS.map((c) => ({ c, rooms: ROOMS.filter((r) => r.categoryId === c.id) })).filter((g) => g.rooms.length);
+      const loose = ROOMS.filter((r) => !groups.some((g) => g.c.id === r.categoryId));
+      pickBox.innerHTML = groups.map(({ c, rooms }) => {
+        const ids = catRoomIds(c);
+        const wp = c.whole ? Number(c.whole.prices[plan()]) || 0 : 0;
+        const on = !!w && w.id === c.id;
+        const can = !!c.whole && ids.length > 0 && wp > 0 && ids.every((id) => taken[id] === undefined);
+        const wholeBtn = c.whole && !isBlock ? `<button type="button" class="rpick__whole${on ? ' is-on' : ''}" data-pick-whole="${c.id}" aria-pressed="${on}" ${can || on ? '' : 'disabled'}
+          title="${can || on ? `Every room of ${esc(c.name)}, at one price` : 'Some of its rooms are booked on these dates, or it has no price for this meal plan'}">${on ? '✓ ' : ''}${esc(c.whole.label)}${wp ? ` · ${money(wp)} / night` : ''}</button>` : '';
+        return `<section class="rpick__cat"><header><b>${esc(c.name)}</b>${wholeBtn}</header><div class="rpick__rooms">${rooms.map(tile).join('')}</div></section>`;
+      }).join('') + (loose.length ? `<section class="rpick__cat"><header><b>${groups.length ? 'Other rooms' : 'Rooms'}</b></header><div class="rpick__rooms">${loose.map(tile).join('')}</div></section>` : '');
+      const cap = sel.reduce((sum, id) => sum + (roomById(id).capacity || 0), 0);
+      const night = (w ? Number(w.whole.prices[plan()]) || 0 : 0) + sel.filter((id) => !w || roomById(id).categoryId !== w.id).reduce((sum, id) => sum + priceOf(roomById(id)), 0);
+      $('[data-rpick-sum]', form).textContent = !sel.length ? '· none chosen yet'
+        : `· ${sel.length} room${sel.length === 1 ? '' : 's'}, sleep ${cap}${isBlock ? '' : ` · ${money(night)} a night, ${planName(plan()).toLowerCase()}`}`;
+    }
+    pickBox.addEventListener('click', (e) => {
+      const wb = e.target.closest('[data-pick-whole]');
+      const rb = e.target.closest('[data-pick-room]');
+      if (!wb && !rb) return;
+      if (wb) { // a whole villa: all its rooms, or none of them
+        const c = CATS.find((x) => String(x.id) === wb.dataset.pickWhole);
+        const ids = catRoomIds(c);
+        const on = form.wholeCategory.value === String(c.id);
+        const rest = sel.filter((id) => !ids.includes(id));
+        if (!on && rest.length + ids.length > 10) { toast('A booking can have up to 10 rooms.', true); return; }
+        sel = on ? rest : [...ids, ...rest];
+        form.wholeCategory.value = on ? '' : String(c.id);
+      } else {
+        const id = Number(rb.dataset.pickRoom);
+        if (!sel.includes(id) && sel.length >= 10) { toast('A booking can have up to 10 rooms.', true); return; }
+        sel = sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id];
+      }
+      form.rateRoom.value = ''; // other rooms start from the price list
+      syncPick();
+      renderPick();
+      check();
+    });
+    // the meal plan buttons (registered before the availability check, which then re-prices)
+    form.addEventListener('change', (e) => {
+      if (e.target.name !== 'planPick') return;
+      form.mealPlan.value = e.target.value;
+      form.rateRoom.value = '';
+      renderPick();
+    });
+    syncPick();
     [form.adults, form.children].forEach((x) => x.addEventListener('input', () => { guestsTouched = true; }));
     const checkBox = $('[data-check]');
     let lastKind = parseKind(what).kind;
@@ -1140,13 +1413,14 @@
       const group = kind === 'per_person';
       $$('[data-guest-f]', form).forEach((el) => { el.hidden = isBlock; });
       $$('[data-room-f]', form).forEach((el) => { el.hidden = kind !== 'room'; });
+      $$('[data-plan-f]', form).forEach((el) => { el.hidden = kind !== 'room' || isBlock; });
       $$('[data-stay-f]', form).forEach((el) => { el.hidden = dayOut; });
       $$('[data-party-f]', form).forEach((el) => { el.hidden = isBlock || dayOut; });
       $$('[data-event-f]', form).forEach((el) => { el.hidden = !isPartyKind || isBlock; });
       const roomKind = kind === 'room';
-      $('[data-group-f]', form).hidden = !(group || isPartyKind || roomKind) || (isBlock && !roomKind);
+      if (isBlock && form.wholeCategory.value) { form.wholeCategory.value = ''; syncPick(); } // blocked dates close rooms, no prices
+      $('[data-group-f]', form).hidden = !(group || isPartyKind) || isBlock;
       $('[data-pick-label]', form).innerHTML = isPartyKind ? 'Hold rooms for party guests who stay the night <span class="src">— optional; the price is in the party\'s total</span>'
-        : roomKind ? `Add more rooms to this ${isBlock ? 'block' : 'booking'} <span class="src">— ${isBlock ? 'close several rooms at once' : 'for a family or group taking several rooms; one booking, one bill'}</span>`
         : 'Choose the group\'s rooms myself <span class="src">— otherwise they\'re taken from the room priority list (Booking setup)</span>';
       form.adults.max = isPartyKind ? 1000 : 50;
       form.children.max = isPartyKind ? 1000 : 30;
@@ -1159,9 +1433,11 @@
       $('[data-in-label]', form).textContent = isPartyKind ? 'Party date' : dayOut ? 'Date' : 'Check-in';
       form.status.disabled = isBlock;
       const reservation = form.status.value === 'pending' && !isBlock;
-      $('[data-hold-f]', form).hidden = !reservation;
+      const held = reservation && advanceNeeded(form); // only a reservation waiting for an advance is held
+      $('[data-hold-f]', form).hidden = !held;
+      $('[data-adv-own]', form).hidden = form.advanceMode.value !== 'own';
       $('[data-notify-f]', form).hidden = isBlock || reservation; // a reservation gets its invoice instead
-      if (reservation && !holdTouched) form.holdUntil.value = defaultHold(form.checkIn.value);
+      if (held && !holdTouched) form.holdUntil.value = defaultHold(form.checkIn.value);
       syncRates(form, kind);
       if (isPartyKind) $$('[data-rate-f]', form).forEach((el) => { el.hidden = true; }); // a party has an agreed price
       commissionHint(form);
@@ -1169,23 +1445,32 @@
         checkBox.className = 'note note--bad'; checkBox.textContent = isPartyKind ? 'Choose the party date.' : dayOut ? 'Choose the date of the day out.' : 'Check-out must be after check-in.'; return;
       }
       const p = checkQuery(form);
-      const mainId = Number(form.roomId.value);
-      const picked = (group || isPartyKind || roomKind) && form.pickRooms.checked ? pickedRooms(pickList).filter((id) => !roomKind || id !== mainId) : [];
-      // a room booking: its main room, then the rooms added
-      const roomList = roomKind ? [mainId, ...picked] : [];
+      const picked = (group || isPartyKind) && form.pickRooms.checked ? pickedRooms(pickList) : [];
+      // a room booking: the rooms chosen in the picker, its main room first
+      const roomList = roomKind ? sel.slice() : [];
       if (roomKind ? roomList.length > 1 : picked.length) p.set('rooms', (roomKind ? roomList : picked).join(','));
       const n = ++seq;
       const r = await api(`/check?${p}`).catch(() => null);
       if (!r || n !== seq) return;
-      // show which rooms other bookings already have on these dates
+      // the picker shows which rooms other bookings have on these dates
+      taken = {};
+      (r.busy || []).forEach((id) => { taken[id] = (r.busyRefs || {})[id] || ''; });
+      if (roomKind) renderPick();
+      // a group's or party's room list too
       $$('[name="room"]', pickList).forEach((x) => {
-        const taken = (r.busy || []).includes(Number(x.value));
-        const isMain = roomKind && Number(x.value) === mainId; // already the booking's room
-        if (isMain) x.checked = false;
-        x.closest('.room-pick__item').classList.toggle('is-taken', taken || isMain);
-        x.disabled = (taken && !x.checked) || isMain;
+        const busy = (r.busy || []).includes(Number(x.value));
+        x.closest('.room-pick__item').classList.toggle('is-taken', busy);
+        x.disabled = busy && !x.checked;
       });
-      const rm = ROOMS.find((x) => String(x.id) === form.roomId.value) || {};
+      if (roomKind && !sel.length) {
+        checkBox.className = 'note note--info';
+        checkBox.textContent = `Choose ${isBlock ? 'the rooms to close' : 'a room, several rooms or a whole villa'} below for ${r.nights} night${r.nights === 1 ? '' : 's'} (${fd(form.checkIn.value)} → ${fd(form.checkOut.value)}).${isBlock ? '' : closedText(r)}`;
+        if (!totalTouched) form.totalAmount.value = '';
+        $('[data-total-hint]').textContent = '';
+        commissionHint(form);
+        return;
+      }
+      const rm = roomById(sel[0]);
       const people = Number(form.adults.value || 0) + Number(form.children.value || 0);
       const nights = `${r.nights} night${r.nights === 1 ? '' : 's'}`;
       const party = partyTakenText(r);
@@ -1194,7 +1479,15 @@
       if (isPartyKind) {
         msg = partyCheckText(r, form, picked);
       } else if (dayOut) msg = `✓ Day out on ${fd(form.checkIn.value, { weekday: 'long', day: 'numeric', month: 'long' })} — any number of groups can come on the same day.`;
-      else if (kind === 'room' && roomList.length > 1) {
+      else if (kind === 'room' && !isBlock && form.wholeCategory.value) {
+        // a whole villa: all its rooms (and any added), at its one price
+        const c = CATS.find((x) => String(x.id) === form.wholeCategory.value) || { name: 'Whole villa', whole: { label: '' } };
+        const ids = r.wholeRooms && r.wholeRooms.length ? r.wholeRooms : roomList;
+        const cap = ids.reduce((s, id) => s + ((ROOMS.find((x) => x.id === id) || {}).capacity || 0), 0);
+        msg = r.ok ? `✓ ${c.name} — ${c.whole.label}: ${roomNames(ids)} (${ids.length} rooms, sleep ${cap}) are free for ${nights} (${fd(form.checkIn.value)} → ${fd(form.checkOut.value)}).`
+          : '✕ One of its rooms is already booked for some of those nights. Pick other dates (see the Calendar), or book the rooms one by one.';
+        if (people > cap) { msg += ` ✕ These rooms sleep ${cap}, not ${people}.`; good = false; }
+      } else if (kind === 'room' && roomList.length > 1) {
         const cap = roomList.reduce((s, id) => s + ((ROOMS.find((x) => x.id === id) || {}).capacity || 0), 0);
         msg = r.ok ? `✓ ${roomNames(roomList)} (${roomList.length} rooms, sleep ${cap}) are free for ${nights} (${fd(form.checkIn.value)} → ${fd(form.checkOut.value)}).`
           : '✕ One of those rooms is already booked for some of those nights. Pick other dates or other rooms (see the Calendar).';
@@ -1232,18 +1525,24 @@
       const dayOut = kind === 'day_out' || kind === 'event'; // one date
       if (!isBlock && !form.guestName.value.trim()) { toast('Please enter the guest name.', true); form.guestName.focus(); return; }
       if (kind === 'event' && form.totalAmount.value === '') { toast('Enter the price agreed for the party.', true); form.totalAmount.focus(); return; }
-      const mainId = Number(form.roomId.value);
-      const picking = (kind === 'per_person' || kind === 'event' || kind === 'room') && form.pickRooms.checked;
-      const picked = picking ? pickedRooms(pickList).filter((id) => kind !== 'room' || id !== mainId) : [];
-      if (picking && kind === 'room' && !picked.length) { toast('Tick the rooms to add, or untick “Add more rooms”.', true); return; }
+      const picking = (kind === 'per_person' || kind === 'event') && form.pickRooms.checked;
+      const picked = picking ? pickedRooms(pickList) : [];
+      if (kind === 'room' && !sel.length) {
+        toast(isBlock ? 'Choose the rooms to close.' : 'Choose a room for this booking.', true);
+        pickBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
       if (picking && !picked.length) { toast(kind === 'event' ? 'Tick the rooms to hold, or untick “Hold rooms for party guests”.' : 'Tick the rooms for the group, or untick “Choose the group\'s rooms myself”.', true); return; }
       const body = {
-        kind, packageId: packageId || undefined, roomId: kind === 'room' ? mainId : undefined,
+        kind, packageId: packageId || undefined, roomId: kind === 'room' ? sel[0] : undefined,
         checkIn: form.checkIn.value, checkOut: dayOut ? undefined : form.checkOut.value,
         adults: isBlock ? 0 : Number(form.adults.value || 0), children: isBlock ? 0 : Number(form.children.value || 0),
         partyArea: !isBlock && !dayOut && form.partyArea.checked, jblSpeaker: !isBlock && form.jblSpeaker.checked,
         // a room booking's rooms (its main room first), or a group's / party's rooms
-        rooms: kind === 'room' ? (picked.length ? [mainId, ...picked] : undefined) : (picked.length ? picked : undefined),
+        rooms: kind === 'room' ? (sel.length > 1 ? sel : undefined) : (picked.length ? picked : undefined),
+        // a room booking's meal plan, and a whole villa (all its rooms at one price)
+        mealPlan: kind === 'room' && !isBlock ? form.mealPlan.value : undefined,
+        wholeCategory: kind === 'room' && !isBlock && form.wholeCategory.value ? Number(form.wholeCategory.value) : undefined,
         source: form.source.value, status: form.status.value,
         guestName: form.guestName.value, guestPhone: form.guestPhone.value, guestEmail: form.guestEmail.value, country: form.country.value,
         guestIdNo: isBlock ? '' : form.guestIdNo.value,
@@ -1251,11 +1550,21 @@
         notifyGuest: form.notifyGuest.checked && form.status.value !== 'pending',
       };
       if (!isBlock) Object.assign(body, kind === 'event' ? partyBody(form) : rateBody(form, kind), commissionBody(form));
-      if (!isBlock && form.status.value === 'pending') body.holdUntil = form.holdUntil.value;
+      if (!isBlock) {
+        if (form.advanceMode.value === 'own' && !(Number(form.advanceAmount.value) >= 1)) { toast('Enter the advance for this booking, or choose another option.', true); form.advanceAmount.focus(); return; }
+        body.advanceAmount = advanceBody(form);
+      }
+      if (!isBlock && form.status.value === 'pending' && advanceNeeded(form)) body.holdUntil = form.holdUntil.value;
       const btn = $('[data-save]'); btn.disabled = true;
       try {
         const r = await api('/bookings', { method: 'POST', body });
         toast(`Saved ${r.booking.ref}${r.emailed ? ' — guest emailed' : ''}`);
+        if (!isBlock && form.sendConfirm.checked) {
+          // the booking, with the window that sends the guest their confirmation link
+          openConfirmFor = r.booking.id;
+          location.hash = `#/bookings/${r.booking.id}`;
+          return;
+        }
         if (r.booking.status === 'pending' && !isBlock) {
           // a reservation: show it with its invoice, ready to send
           openInvoiceFor = r.booking.id;
@@ -1270,10 +1579,12 @@
 
   // ================= ROOMS =================
   async function viewRooms() {
-    setHead('Rooms', 'Names, prices, how many guests each room sleeps, and the photos shown on the website.');
-    ROOMS = (await api('/rooms')).rooms;
+    setHead('Rooms', 'Names, descriptions and the photos shown on the website, and whether guests can book each room.');
+    const rr = await api('/rooms');
+    ROOMS = rr.rooms;
+    CATS = rr.categories || [];
     view.innerHTML = `<div class="rooms-admin">
-      <div class="note note--info">Per-person options (full board, half board…), the party area and JBL prices, the hotel's capacity and the order rooms are given to per-person groups are in <a href="#/setup">Booking setup</a>.</div>
+      <div class="note note--info">Each room's <b>category, room type, guests and prices</b> (room only, bed &amp; breakfast, half board, full board) are on the <a href="#/rates">Rate sheet</a>. Per-person options, the party area and JBL prices, the hotel's capacity and the order rooms are given to per-person groups are in <a href="#/setup">Booking setup</a>.</div>
       ${ROOMS.map(roomEditor).join('')}
     </div>`;
     view.onclick = (e) => {
@@ -1294,8 +1605,7 @@
       e.preventDefault();
       const f = e.target;
       const body = {
-        name: f.name.value, type: f.type.value, tagline: f.tagline.value, description: f.description.value,
-        price: Number(f.price.value), capacity: Number(f.capacity.value),
+        name: f.name.value, tagline: f.tagline.value, description: f.description.value,
         beds: f.beds.value, size: Number(f.size.value), active: f.active.checked,
         features: f.features.value.split('\n').map((s) => s.trim()).filter(Boolean),
         images: JSON.parse(card.dataset.images),
@@ -1325,16 +1635,14 @@
       <div class="room-ed__form">
         <div class="grid4">
           <label class="fld span2"><span>Name</span><input name="name" value="${esc(r.name)}" required maxlength="80"></label>
-          <label class="fld"><span>Type</span><input name="type" value="${esc(r.type)}" required maxlength="60"></label>
           <label class="fld"><span>Beds</span><input name="beds" value="${esc(r.beds)}" maxlength="80"></label>
-          <label class="fld span2"><span>Tagline</span><input name="tagline" value="${esc(r.tagline)}" maxlength="200"></label>
-          <label class="fld"><span>Sleeps <small>guests</small></span><input type="number" name="capacity" min="1" max="50" value="${r.capacity}" required></label>
           <label class="fld"><span>Size (m²)</span><input type="number" name="size" min="0" value="${r.size}"></label>
-          <label class="fld"><span>Price per night (${esc(ME.currency)}) <small>whole room</small></span><input type="number" name="price" min="0" value="${r.price}" required></label>
-          <label class="fld span3"><span>Features <small>(one per line)</small></span><textarea name="features" rows="3">${esc(r.features.join('\n'))}</textarea></label>
+          <div class="fld full room-ed__rates"><span>Rate sheet <a href="#/rates" class="linkbtn">Edit</a></span><p>${esc(r.type)}${r.label ? ` · ${esc(r.label)}` : ''} · sleeps ${r.capacity} · ${PLANS().map((p) => `${esc(p.code)} ${money((r.prices || {})[p.code] || 0)}`).join(' · ')}</p></div>
+          <label class="fld full"><span>Tagline</span><input name="tagline" value="${esc(r.tagline)}" maxlength="200"></label>
+          <label class="fld full"><span>Features <small>(one per line)</small></span><textarea name="features" rows="3">${esc(r.features.join('\n'))}</textarea></label>
           <label class="fld full"><span>Description</span><textarea name="description" maxlength="2000">${esc(r.description)}</textarea></label>
         </div>
-        <small class="room-ed__hint">“${esc(ME.labels.room)}” bookings pay the room price and take ${r.capacity} of the hotel's guest places, however many come. “Bookable on the website” lets guests choose this room themselves; per-person groups can be given it either way (the room list in Booking setup decides).</small>
+        <small class="room-ed__hint">“${esc(ME.labels.room)}” bookings pay the room's price for the meal plan chosen and take ${r.capacity} of the hotel's guest places, however many come. “Bookable on the website” lets guests choose this room themselves; per-person groups can be given it either way (the room list in Booking setup decides).</small>
         <div class="room-ed__foot">
           <label class="switch"><input type="checkbox" name="active" ${r.active ? 'checked' : ''}> Bookable on the website</label>
           <button class="abtn abtn--primary" type="submit">Save room</button>
@@ -1426,31 +1734,85 @@
   }
 
   // ================= SETTINGS =================
-  /** WhatsApp alerts: a message to the resort's phone when a booking is confirmed (CallMeBot). */
-  const waCard = (w) => `<section class="card" data-wa-card>
-    <div class="card__head"><h2>WhatsApp alerts</h2>${w.enabled ? '<span class="st st--confirmed">On</span>' : w.hasKey ? '<span class="st st--checked_out">Paused</span>' : '<span class="st st--pending">Needs the API key</span>'}</div>
+  /** Booking notifications: the admin addresses emailed about every new website booking. */
+  const emailRow = (e = '') => `<div class="nt-row nt-row--email" data-ne-row>
+      <input class="inp" type="email" name="email" value="${esc(e)}" maxlength="254" placeholder="name@example.com" autocomplete="off" aria-label="Email address">
+      <button type="button" class="abtn abtn--sm" data-ne-test title="Send a test email to this address">${icon('a-mail', 14)}Test</button>
+      <button type="button" class="abtn abtn--sm abtn--ghost" data-ne-rm aria-label="Remove this email">${icon('a-x', 14)}</button>
+    </div>`;
+  const notifyCard = (n) => `<section class="card" data-ne-card data-max="${n.max}">
+    <div class="card__head"><h2>Booking notifications</h2>${ME.emailEnabled ? '<span class="st st--confirmed">Email on</span>' : '<span class="st st--pending">Not set up</span>'}</div>
     <div class="card__body" style="display:grid;gap:14px">
-      <p style="margin:0">When a booking is confirmed, its details (guest, ID, dates, total, advance paid) are sent by WhatsApp to this number.</p>
-      <form class="grid2" data-wa-form style="align-items:end">
-        <label class="fld"><span>WhatsApp number <small>with the country code</small></span><input name="phone" value="${esc(w.phone)}" maxlength="20" required placeholder="94777368264"></label>
-        <label class="fld"><span>CallMeBot API key</span><input name="apiKey" maxlength="64" autocomplete="off" placeholder="${w.hasKey ? `${esc(w.keyHint)} saved — type to replace` : 'from the CallMeBot reply'}"></label>
-        <div class="full" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <p style="margin:0">Every new website booking is emailed to each address below, with the guest's details and a link to the booking. Emails are sent from <b>${esc(ME.mailFrom)}</b>.</p>
+      ${ME.emailEnabled ? '' : `<div class="note note--info">Email sending isn't set up yet, so messages are being saved to <code>data/outbox/</code> on the server. To switch it on, create the mailbox <b>${esc(ME.mailFrom)}</b> in your hosting panel and put its password in the <code>.env</code> file as <code>SMTP_PASS</code> (with <code>SMTP_HOST</code> and <code>SMTP_USER</code>).</div>`}
+      <form data-ne-form style="display:grid;gap:10px" novalidate>
+        <p class="section-title">Admin emails</p>
+        <div class="nt-list" data-ne-list>${(n.emails.length ? n.emails : ['']).map(emailRow).join('')}</div>
+        ${n.emails.length ? '' : '<div class="note note--bad">Nobody is emailed about new bookings yet. Add at least one address and save.</div>'}
+        ${n.fromEnv && n.emails.length ? '<p class="src" style="margin:0">These come from <code>ADMIN_NOTIFY_EMAILS</code> in <code>.env</code>. Once you save here, this list is used instead.</p>' : ''}
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="abtn" data-ne-add>+ Add an email</button><span style="flex:1"></span><button class="abtn abtn--primary" type="submit">Save emails</button></div>
+      </form>
+      <ul>
+        <li>Guests get a “booking received” email with the total, the bank details and the number to call, plus an email when you confirm or cancel (if “Email the guest” is ticked).</li>
+      </ul>
+    </div>
+  </section>`;
+
+  /** WhatsApp alerts: a message to each of the resort's phones for new and confirmed bookings (CallMeBot). */
+  const waRow = (n = {}) => `<div class="nt-row nt-row--wa" data-wa-row data-id="${esc(n.id || '')}">
+      <label class="fld"><span>Name <small>optional</small></span><input name="name" value="${esc(n.name || '')}" maxlength="40" placeholder="e.g. Owner" autocomplete="off"></label>
+      <label class="fld"><span>WhatsApp number</span><input name="phone" value="${esc(n.phone || '')}" maxlength="20" placeholder="94777368264" inputmode="tel" autocomplete="off" title="With the country code, e.g. 94777368264"></label>
+      <button type="button" class="abtn abtn--sm abtn--ghost" data-wa-rm aria-label="Remove this number">${icon('a-x', 14)}</button>
+      <label class="fld nt-key"><span>CallMeBot API key</span><input name="apiKey" maxlength="64" autocomplete="off" placeholder="${n.hasKey ? `${esc(n.keyHint)} saved — type to replace` : 'from the CallMeBot reply'}"></label>
+      <button type="button" class="abtn abtn--sm" data-wa-test title="Send a test message to this number">${icon('a-wa', 14)}Test</button>
+    </div>`;
+  const waCard = (w) => {
+    const missing = w.numbers.filter((n) => !n.hasKey).length;
+    const status = !w.on ? '<span class="st st--checked_out">Paused</span>'
+      : !w.numbers.length ? '<span class="st st--pending">No numbers</span>'
+      : w.enabled ? `<span class="st st--confirmed">On${missing ? ` · ${missing} need${missing === 1 ? 's' : ''} a key` : ''}</span>`
+      : '<span class="st st--pending">Needs the API key</span>';
+    return `<section class="card" data-wa-card data-max="${w.max}">
+    <div class="card__head"><h2>WhatsApp alerts</h2>${status}</div>
+    <div class="card__body" style="display:grid;gap:14px">
+      <p style="margin:0">Booking alerts (guest, ID, dates, total and a link to the booking) are sent by WhatsApp to every number below. Type each number with the country code, e.g. 94777368264.</p>
+      <form data-wa-form style="display:grid;gap:12px">
+        <div class="nt-list" data-wa-list>${(w.numbers.length ? w.numbers : [{}]).map(waRow).join('')}</div>
+        <div><button type="button" class="abtn" data-wa-add>+ Add a number</button></div>
+        <div style="display:grid;gap:8px">
+          <p class="section-title">Send an alert</p>
+          <label class="chk"><input type="checkbox" name="onNew" ${w.onNew ? 'checked' : ''}> When a guest books on the website</label>
+          <label class="chk"><input type="checkbox" name="onConfirmed" ${w.onConfirmed ? 'checked' : ''}> When a booking is confirmed</label>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <label class="switch"><input type="checkbox" name="on" ${w.on ? 'checked' : ''}> Send alerts</label>
           <span style="flex:1"></span>
-          <button class="abtn" type="button" data-wa-test>${icon('a-wa', 16)}Send test</button>
+          <button class="abtn" type="button" data-wa-test-all ${w.numbers.length > 1 ? '' : 'hidden'}>${icon('a-wa', 16)}Test all</button>
           <button class="abtn abtn--primary" type="submit">Save</button>
         </div>
       </form>
-      <details class="wa-help" ${w.hasKey ? '' : 'open'}><summary>Get the free API key (once, about 2 minutes)</summary>
+      <details class="wa-help" ${missing || !w.numbers.length ? 'open' : ''}><summary>Get the free API key for each number (once, about 2 minutes)</summary>
         <ol>
-          <li>On the phone that uses WhatsApp number <b>+${esc(w.phone)}</b>, save <b>+34 644 95 73 56</b> as a contact (CallMeBot).</li>
+          <li>On the phone with that WhatsApp number, save <b>+34 644 95 73 56</b> as a contact (CallMeBot).</li>
           <li>Send that contact this WhatsApp message: <code>I allow callmebot to send me messages</code></li>
-          <li>It replies “API Activated … Your APIKEY is 123456”. Type that key above, press <b>Save</b>, then <b>Send test</b>.</li>
+          <li>It replies “API Activated … Your APIKEY is 123456”. Type that key next to the number above, press <b>Save</b>, then <b>Test</b>.</li>
         </ol>
-        <p class="src">CallMeBot is a free service for alerts to your own phone. If it doesn't reply within a few minutes, check its current number on callmebot.com. Until a key is saved, alerts are kept in <code>data/outbox/</code>.</p>
+        <p class="src">Each phone gets its own key, which only sends to that phone, so repeat these steps on every phone you add. CallMeBot is a free service for alerts to your own phones. If it doesn't reply within a few minutes, check its current number on callmebot.com. Until a number has its key, its alerts are kept in <code>data/outbox/</code>.</p>
       </details>
     </div>
   </section>`;
+  };
+  /** The toast after a WhatsApp test: [text, failed?]. */
+  const waTestSummary = (rs) => {
+    const sent = rs.filter((x) => x.sent).length;
+    const box = rs.filter((x) => x.outbox).length;
+    const bad = rs.filter((x) => x.error);
+    const parts = [];
+    if (sent) parts.push(`Test sent to ${sent === 1 ? (rs.length === 1 ? 'the number' : '1 number') : `${sent} numbers`} — check WhatsApp`);
+    if (box) parts.push(`${box === 1 && rs.length === 1 ? 'No API key yet — the test was' : `${box} without an API key`} saved to data/outbox`);
+    if (bad.length) parts.push(`failed for ${bad.map((x) => `+${x.phone}`).join(', ')}: ${bad[0].error}`);
+    return [parts.join('; '), bad.length > 0];
+  };
 
   /** Reminders: emails to guests before arrival and before an unpaid reservation is released. */
   const remindersCard = (r) => {
@@ -1515,26 +1877,10 @@
     const site = can('site');
     const printing = can('setup');
     setHead('Settings', site ? 'Email, WhatsApp alerts, Google Calendar, printing and your account.' : 'Your account.');
-    const [{ whatsapp }, { feed }, { reminders }] = site ? await Promise.all([api('/whatsapp'), api('/calendar-feed'), api('/reminders')]) : [{}, {}, {}];
+    const [{ notify }, { whatsapp }, { feed }, { reminders }] = site
+      ? await Promise.all([api('/notify-emails'), api('/whatsapp'), api('/calendar-feed'), api('/reminders')]) : [{}, {}, {}, {}];
     view.innerHTML = `<div class="settings">
-      ${site ? `<section class="card">
-        <div class="card__head"><h2>Booking notifications</h2>${ME.emailEnabled ? '<span class="st st--confirmed">Email on</span>' : '<span class="st st--pending">Not set up</span>'}</div>
-        <div class="card__body" style="display:grid;gap:14px">
-          <p style="margin:0">Emails to guests are sent from <b>${esc(ME.mailFrom)}</b>.</p>
-          ${ME.emailEnabled
-            ? `<p style="margin:0">New website bookings are emailed to: <b>${esc(ME.notifyEmails.join(', ') || '— nobody yet —')}</b></p>`
-            : `<div class="note note--info">Email sending isn't set up yet, so messages are being saved to <code>data/outbox/</code> on the server. To switch it on, create the mailbox <b>${esc(ME.mailFrom)}</b> in your hosting panel and put its password in the <code>.env</code> file as <code>SMTP_PASS</code> (with <code>SMTP_HOST</code> and <code>SMTP_USER</code>).</div>`}
-          ${ME.notifyEmails.length ? '' : '<div class="note note--bad">No admin email set — add <code>ADMIN_NOTIFY_EMAILS</code> in <code>.env</code> so you hear about new bookings.</div>'}
-          <form class="grid2" data-test-email style="align-items:end">
-            <label class="fld"><span>Send a test email to</span><input type="email" name="to" value="${esc(ME.notifyEmails[0] || '')}" required></label>
-            <button class="abtn" type="submit">${icon('a-mail')}Send test</button>
-          </form>
-          <ul>
-            <li>Admins get an email for every website booking request.</li>
-            <li>Guests get a “booking received” email with the total, the bank details and the number to call, plus an email when you confirm or cancel (if “Email the guest” is ticked).</li>
-          </ul>
-        </div>
-      </section>
+      ${site ? `${notifyCard(notify)}
       ${waCard(whatsapp)}
       ${remindersCard(reminders)}
       ${calCard(feed)}` : ''}
@@ -1594,33 +1940,107 @@
     };
   }
 
-  /** Settings: the email test, WhatsApp and Google Calendar cards (admins). */
+  /** Settings: the notification emails, WhatsApp, reminders and Google Calendar cards (admins). */
   function bindSiteCards() {
-    $('[data-test-email]').onsubmit = async (e) => {
-      e.preventDefault();
-      try {
-        const r = await api('/test-email', { method: 'POST', body: { to: e.target.to.value } });
-        toast(r.outbox ? 'Saved to data/outbox (SMTP not configured yet)' : 'Test email sent — check the inbox');
-      } catch (ex) { toast(ex.message, true); }
+    const bindNe = () => {
+      const card = $('[data-ne-card]');
+      const f = $('[data-ne-form]', card);
+      const list = $('[data-ne-list]', card);
+      const max = Number(card.dataset.max) || 10;
+      const inputs = () => $$('[data-ne-row] input', list);
+      const refresh = (n) => { ME.notifyEmails = n.emails; card.outerHTML = notifyCard(n); bindNe(); };
+      card.onclick = async (e) => {
+        if (e.target.closest('[data-ne-add]')) {
+          if (inputs().length >= max) { toast(`Up to ${max} email addresses.`, true); return; }
+          list.insertAdjacentHTML('beforeend', emailRow());
+          inputs().pop().focus();
+          return;
+        }
+        const rm = e.target.closest('[data-ne-rm]');
+        if (rm) {
+          rm.closest('[data-ne-row]').remove();
+          if (!inputs().length) list.insertAdjacentHTML('beforeend', emailRow());
+          return;
+        }
+        const test = e.target.closest('[data-ne-test]');
+        if (test) {
+          const input = $('input', test.closest('[data-ne-row]'));
+          const to = input.value.trim();
+          if (!to || !input.checkValidity()) { input.focus(); toast(to ? `“${to}” is not an email address.` : 'Type an email address first.', true); return; }
+          test.disabled = true;
+          try {
+            const r = await api('/test-email', { method: 'POST', body: { to } });
+            toast(r.outbox ? 'Saved to data/outbox (SMTP not configured yet)' : `Test email sent to ${to} — check the inbox`);
+          } catch (ex) { toast(ex.message, true); }
+          test.disabled = false;
+        }
+      };
+      f.onsubmit = async (e) => {
+        e.preventDefault();
+        const bad = inputs().find((i) => i.value.trim() && !i.checkValidity());
+        if (bad) { bad.focus(); toast(`“${bad.value.trim()}” is not an email address.`, true); return; }
+        const emails = inputs().map((i) => i.value.trim()).filter(Boolean);
+        try {
+          refresh((await api('/notify-emails', { method: 'PUT', body: { emails } })).notify);
+          toast(emails.length ? `New bookings will be emailed to ${emails.length === 1 ? emails[0] : `${emails.length} addresses`}` : 'Saved — nobody is emailed about new bookings', !emails.length);
+        } catch (ex) { toast(ex.message, true); }
+      };
     };
+    bindNe();
     const bindWa = () => {
       const card = $('[data-wa-card]');
       const f = $('[data-wa-form]', card);
+      const list = $('[data-wa-list]', card);
+      const max = Number(card.dataset.max) || 10;
+      let dirty = false; // unsaved changes: tests use the saved numbers and keys
       const refresh = (w) => { card.outerHTML = waCard(w); bindWa(); };
-      f.onsubmit = async (e) => {
-        e.preventDefault();
-        const body = { phone: f.phone.value, on: f.on.checked };
-        if (f.apiKey.value.trim()) body.apiKey = f.apiKey.value.trim();
-        try { refresh((await api('/whatsapp', { method: 'PATCH', body })).whatsapp); toast('WhatsApp alerts saved'); } catch (ex) { toast(ex.message, true); }
-      };
-      $('[data-wa-test]', card).onclick = async (e) => {
-        const btn = e.currentTarget;
+      const rows = () => $$('[data-wa-row]', list);
+      f.oninput = () => { dirty = true; };
+      const test = async (btn, id) => {
+        if (dirty) { toast('Save your changes first, then send the test.', true); return; }
         btn.disabled = true;
         try {
-          const r = await api('/whatsapp/test', { method: 'POST', body: {} });
-          toast(r.outbox ? 'No API key yet — the test was saved to data/outbox' : 'Test sent — check WhatsApp');
+          const r = await api('/whatsapp/test', { method: 'POST', body: id ? { id } : {} });
+          toast(...waTestSummary(r.results));
         } catch (ex) { toast(ex.message, true); }
         btn.disabled = false;
+      };
+      card.onclick = (e) => {
+        if (e.target.closest('[data-wa-add]')) {
+          if (rows().length >= max) { toast(`Up to ${max} WhatsApp numbers.`, true); return; }
+          list.insertAdjacentHTML('beforeend', waRow());
+          $('[name="name"]', rows().pop()).focus();
+          dirty = true;
+          return;
+        }
+        const rm = e.target.closest('[data-wa-rm]');
+        if (rm) {
+          rm.closest('[data-wa-row]').remove();
+          if (!rows().length) list.insertAdjacentHTML('beforeend', waRow());
+          dirty = true;
+          return;
+        }
+        const t = e.target.closest('[data-wa-test]');
+        if (t) {
+          const id = t.closest('[data-wa-row]').dataset.id;
+          if (!id) { toast('Save this number first, then send the test.', true); return; }
+          test(t, id);
+          return;
+        }
+        const all = e.target.closest('[data-wa-test-all]');
+        if (all) test(all, null);
+      };
+      f.onsubmit = async (e) => {
+        e.preventDefault();
+        const numbers = rows().map((r) => {
+          const n = { id: r.dataset.id, name: $('[name="name"]', r).value, phone: $('[name="phone"]', r).value };
+          const key = $('[name="apiKey"]', r).value.trim();
+          if (key) n.apiKey = key;
+          return n;
+        });
+        const el = f.elements;
+        const body = { numbers, on: el.on.checked, onNew: el.onNew.checked, onConfirmed: el.onConfirmed.checked };
+        try { refresh((await api('/whatsapp', { method: 'PATCH', body })).whatsapp); toast('WhatsApp alerts saved'); } catch (ex) { toast(ex.message, true); }
       };
     };
     bindWa();

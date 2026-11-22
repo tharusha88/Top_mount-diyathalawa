@@ -27,6 +27,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/style.css">
+<link rel="stylesheet" href="/css/chat.css">
 </head>
 <body>
 
@@ -47,7 +48,7 @@
       </ul>
     </nav>
     <div class="nav__actions">
-      <a class="btn btn--nav" href="#book">Book now</a>
+      <a class="btn btn--nav" href="/book?go=rooms">Book now</a>
       <button type="button" class="nav__toggle" aria-expanded="false" aria-controls="menu">
         <span class="nav__toggle-label">Menu</span>
         <span class="nav__toggle-icon" aria-hidden="true"><i></i><i></i></span>
@@ -67,7 +68,7 @@
     </ol>
   </nav>
   <div class="menu__foot">
-    <a class="btn btn--solid btn--block" href="#book">Book your stay <svg class="i-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></a>
+    <a class="btn btn--solid btn--block" href="/book?go=rooms">Book your stay <svg class="i-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></a>
     <div class="menu__contact">
       <p class="eyebrow">Hotline</p>
       <div class="menu__phones" data-contact="phones"></div>
@@ -92,7 +93,7 @@
     <p class="hero__lede" data-hero-fade>Timber cabanas, a clay-walled mud house and bright villas on a 3-acre estate in the cool, pine-covered hills of Diyatalawa.</p>
     <div class="hero__ctas" data-hero-fade>
       <a class="btn btn--ivory" href="#intro">Explore the resort <svg class="i-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></a>
-      <a class="btn btn--glass" href="#book">Book your stay</a>
+      <a class="btn btn--glass" href="/book?go=rooms">Book your stay</a>
     </div>
   </div>
 
@@ -397,80 +398,57 @@
 <!-- ============ 11. FOOTER ============ -->
 <footer class="foot" aria-labelledby="foot-title">
   <div class="wrap">
-    <div class="foot__top">
+    <div class="foot__main">
       <div class="foot__brand" data-fade>
-        <p class="eyebrow">Diyatalawa <span aria-hidden="true">·</span> Sri Lanka</p>
         <h2 class="foot__name" id="foot-title"><span class="logo foot__logo" aria-hidden="true"></span><span class="sr-only">Top Mountain Resort</span></h2>
-        <p class="foot__about">Timber cabanas, a clay-walled mud house and bright villas in the cool, pine-covered hills of Diyatalawa.</p>
+        <p class="foot__line">A hidden sanctuary in the cool, pine-covered hills of Diyatalawa.</p>
+        <div class="foot__social" data-optional="socials"><div data-contact="socials"></div></div>
       </div>
-      <ul class="foot__actions" data-fade>
-        <li>
-          <a class="qa" data-contact="tel" href="#">
-            <span class="qa__ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5.5 3.5h3l1.6 4.3-2 1.3a11 11 0 0 0 6.8 6.8l1.3-2 4.3 1.6v3a2 2 0 0 1-2.2 2A17.5 17.5 0 0 1 3.5 5.7a2 2 0 0 1 2-2.2Z"/></svg></span>
-            <span class="qa__txt"><span class="qa__k">Call the hotline</span><span class="qa__v" data-contact="tel-label"></span></span>
-            <svg class="i-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg>
-          </a>
-        </li>
-        <li>
-          <a class="qa" data-contact="whatsapp" href="#" target="_blank" rel="noopener">
-            <span class="qa__ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20l1.3-4.3a8 8 0 1 1 3.1 3.1L4 20Z"/><path d="M9.2 9.6c.3 1.9 2.4 4 4.4 4.4"/></svg></span>
-            <span class="qa__txt"><span class="qa__k">WhatsApp</span><span class="qa__v">Message the resort</span></span>
-            <svg class="i-ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16 16.5 7.5M9 7h8v8"/></svg>
-          </a>
-        </li>
-        <li>
-          <a class="qa" data-contact="maps" href="#" target="_blank" rel="noopener">
-            <span class="qa__ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21s-6.5-6-6.5-11a6.5 6.5 0 0 1 13 0c0 5-6.5 11-6.5 11Z"/><circle cx="12" cy="10" r="2.3"/></svg></span>
-            <span class="qa__txt"><span class="qa__k">Find us</span><span class="qa__v">Get directions</span></span>
-            <svg class="i-ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16 16.5 7.5M9 7h8v8"/></svg>
-          </a>
-        </li>
-      </ul>
-    </div>
 
-    <div class="foot__links">
-      <nav class="foot__col foot__nav" aria-label="Footer">
+      <nav class="foot__col foot__nav" aria-label="Footer" data-fade>
         <h3>Explore</h3>
         <ul>
           <li><a href="#stay">Stay</a></li>
           <li><a href="#experiences">Experiences</a></li>
           <li><a href="#dining">Dining</a></li>
           <li><a href="#location">Location</a></li>
-          <li><a href="#book">Book</a></li>
         </ul>
       </nav>
-      <div class="foot__col">
-        <h3>Stays</h3>
-        <ul data-render="foot-stays"></ul>
+
+      <div class="foot__col foot__call" data-fade>
+        <h3>Reservations</h3>
+        <!-- the first number shows large; the rest sit on the small line with WhatsApp -->
+        <div class="foot__reach">
+          <div class="foot__phones" data-contact="phones"></div>
+          <a class="foot__wa" data-contact="whatsapp" href="#" target="_blank" rel="noopener">WhatsApp <svg class="i-ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16 16.5 7.5M9 7h8v8"/></svg></a>
+        </div>
+        <a class="btn btn--ivory foot__cta" href="/book?go=rooms">Book your stay <svg class="i-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-5.5-6 6 6-6 6"/></svg></a>
       </div>
-      <div class="foot__col foot__contact">
-        <h3>Contact</h3>
-        <div data-contact="phones"></div>
+
+      <div class="foot__col foot__visit" data-fade>
+        <h3>Visit</h3>
         <address data-contact="address"></address>
-      </div>
-      <div class="foot__col" data-optional="socials">
-        <h3>Follow</h3>
-        <div data-contact="socials"></div>
+        <a class="foot__go" data-contact="maps" href="#" target="_blank" rel="noopener">Directions <svg class="i-ext" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 16 16.5 7.5M9 7h8v8"/></svg></a>
       </div>
     </div>
 
     <div class="foot__legal">
-      <p>© <span data-year>2026</span> Top Mountain Resort <span aria-hidden="true">·</span> Diyatalawa, Sri Lanka</p>
-      <p class="foot__time" data-localtime hidden><i aria-hidden="true"></i>Local time at the resort <b data-localtime-value></b></p>
+      <p>© <span data-year>2026</span> Top Mountain Resort</p>
+      <p class="foot__time" data-localtime hidden><i aria-hidden="true"></i><b data-localtime-value></b> at the resort</p>
       <a href="#top" class="foot__up">Back to top <span class="foot__up-ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 19V5m-6 6 6-6 6 6"/></svg></span></a>
     </div>
   </div>
 </footer>
 
 <!-- phone contact bar: call or WhatsApp the resort from anywhere on the page (phones and small tablets only) -->
-<div class="mbar" role="group" aria-label="Contact the resort">
+<div class="mbar" role="group" aria-label="Call or book">
   <a class="mbar__btn mbar__btn--call" data-contact="tel" href="#">
     <span class="mbar__ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5.5 3.5h3l1.6 4.3-2 1.3a11 11 0 0 0 6.8 6.8l1.3-2 4.3 1.6v3a2 2 0 0 1-2.2 2A17.5 17.5 0 0 1 3.5 5.7a2 2 0 0 1 2-2.2Z"/></svg></span>
     <span class="mbar__label">Call now</span>
   </a>
-  <a class="mbar__btn mbar__btn--wa" data-contact="whatsapp" href="#" target="_blank" rel="noopener">
-    <span class="mbar__ico" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 20l1.3-4.3a8 8 0 1 1 3.1 3.1L4 20Z"/><path d="M9.2 9.6c.3 1.9 2.4 4 4.4 4.4"/></svg></span>
-    <span class="mbar__label">WhatsApp</span>
+  <a class="mbar__btn mbar__btn--book" href="/book?go=rooms">
+    <span class="mbar__ico" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="5.5" width="16" height="14.5" rx="2"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/></svg></span>
+    <span class="mbar__label">Book now</span>
   </a>
 </div>
 
@@ -521,5 +499,6 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
 <script src="/js/main.js"></script>
+<script src="/js/chat.js"></script><!-- the chat window, when Admin → Chatbot switches it on -->
 </body>
 </html>

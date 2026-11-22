@@ -87,10 +87,15 @@ CREATE TABLE IF NOT EXISTS rooms (
   id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
   slug          VARCHAR(191) COLLATE utf8mb4_bin NOT NULL,
   name          VARCHAR(255) NOT NULL,
-  type          VARCHAR(255) NOT NULL,
+  type          VARCHAR(255) NOT NULL COMMENT 'the room category name (kept in step with category_id)',
+  category_id   INT UNSIGNED NULL COMMENT 'room_categories.id: its table on the rate sheet',
+  room_label    VARCHAR(80) NOT NULL DEFAULT '' COMMENT 'room type on the rate sheet, e.g. Double Room',
   tagline       VARCHAR(255) NOT NULL DEFAULT '',
   description   TEXT NOT NULL,
-  price         INT NOT NULL COMMENT 'per room per night, whole currency units',
+  price         INT NOT NULL COMMENT 'room only (RO), per room per night, whole currency units',
+  price_bb      INT NOT NULL DEFAULT 0 COMMENT 'bed and breakfast, per night (0 = not offered)',
+  price_hb      INT NOT NULL DEFAULT 0 COMMENT 'half board, per night (0 = not offered)',
+  price_fb      INT NOT NULL DEFAULT 0 COMMENT 'full board, per night (0 = not offered)',
   max_adults    INT NOT NULL DEFAULT 2,
   max_children  INT NOT NULL DEFAULT 0,
   capacity      INT NOT NULL DEFAULT 2 COMMENT 'guests the room sleeps',
@@ -104,6 +109,20 @@ CREATE TABLE IF NOT EXISTS rooms (
   UNIQUE KEY uq_rooms_slug (slug)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS room_categories (
+  id          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  name        VARCHAR(80) NOT NULL COMMENT 'e.g. Wooden Cabana (a table of the rate sheet)',
+  sort        INT NOT NULL DEFAULT 0,
+  whole_code  VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'short name on the rate sheet, e.g. W/VILLA',
+  whole_label VARCHAR(80) NOT NULL DEFAULT '' COMMENT 'every room of the category together, e.g. Whole Villa (empty = not offered)',
+  whole_pax   INT NOT NULL DEFAULT 0 COMMENT 'guests the whole category sleeps',
+  whole_ro    INT NOT NULL DEFAULT 0 COMMENT 'whole category, per night: room only',
+  whole_bb    INT NOT NULL DEFAULT 0,
+  whole_hb    INT NOT NULL DEFAULT 0,
+  whole_fb    INT NOT NULL DEFAULT 0,
+  PRIMARY KEY (id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS bookings (
   id               INT UNSIGNED NOT NULL AUTO_INCREMENT,
   ref              VARCHAR(20) COLLATE utf8mb4_bin NOT NULL,
@@ -111,6 +130,8 @@ CREATE TABLE IF NOT EXISTS bookings (
   package          VARCHAR(20) COLLATE utf8mb4_bin NOT NULL DEFAULT 'room' COMMENT 'room|per_person|day_out',
   package_id       INT UNSIGNED NULL COMMENT 'per-person option (packages.id)',
   package_name     VARCHAR(120) NOT NULL DEFAULT '' COMMENT 'option name when booked',
+  meal_plan        VARCHAR(2) COLLATE utf8mb4_bin NOT NULL DEFAULT '' COMMENT 'a room booking: RO|BB|HB|FB (empty = RO)',
+  whole_category_id INT UNSIGNED NULL COMMENT 'a room booking that took a whole room category at its whole price',
   check_in         DATE NOT NULL COMMENT 'arrival (the day itself for a day out)',
   check_out        DATE NOT NULL COMMENT 'departure, exclusive (the next day for a day out)',
   nights           INT NOT NULL COMMENT '0 for a day out',
@@ -135,6 +156,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   commission_value INT NOT NULL DEFAULT 0,
   commission_to    VARCHAR(120) NOT NULL DEFAULT '' COMMENT 'the agent or website that takes the commission',
   hold_until       DATE NULL COMMENT 'a pending reservation is released after this day if no advance is paid',
+  advance_amount   INT NULL COMMENT 'the advance this booking asks for (NULL = Booking setup, 0 = none, else this amount)',
   event_slot       VARCHAR(10) COLLATE utf8mb4_bin NOT NULL DEFAULT '' COMMENT 'an outdoor party: day|night|full',
   event_others     VARCHAR(10) COLLATE utf8mb4_bin NOT NULL DEFAULT '' COMMENT 'during a party, other guests: open|rooms (no other stays)|private',
   status           VARCHAR(20) COLLATE utf8mb4_bin NOT NULL DEFAULT 'pending' COMMENT 'pending|confirmed|checked_in|checked_out|cancelled',
@@ -248,6 +270,7 @@ CREATE TABLE IF NOT EXISTS pos_payments (
   note       VARCHAR(255) NOT NULL DEFAULT '',
   fee        INT NOT NULL DEFAULT 0 COMMENT 'commission or charges taken off before the money reached the resort',
   details    VARCHAR(2000) NOT NULL DEFAULT '' COMMENT 'JSON: the extra payment fields (account received into, reference…)',
+  slip       VARCHAR(80) COLLATE utf8mb4_bin NOT NULL DEFAULT '' COMMENT 'file name of the payment slip in DATA_DIR/slips (empty = none)',
   created_at DATETIME(3) NOT NULL COMMENT 'UTC',
   created_by VARCHAR(255) NOT NULL DEFAULT '',
   voided_at  DATETIME(3) NULL,
@@ -437,6 +460,19 @@ CREATE TABLE IF NOT EXISTS closures (
   PRIMARY KEY (id),
   KEY idx_closures_dates (starts_on, ends_on)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- payment slips guests upload from their invoice link, until staff record the payment (version 14)
+CREATE TABLE IF NOT EXISTS booking_slips (
+  id         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  booking_id INT UNSIGNED NOT NULL,
+  slip       VARCHAR(80) COLLATE utf8mb4_bin NOT NULL COMMENT 'file name in DATA_DIR/slips',
+  amount     INT NULL COMMENT 'what the guest says they paid (optional)',
+  note       VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'from the guest',
+  created_at DATETIME(3) NOT NULL COMMENT 'UTC',
+  payment_id INT UNSIGNED NULL COMMENT 'pos_payments.id once staff record the payment with this slip',
+  PRIMARY KEY (id),
+  KEY idx_booking_slips_booking (booking_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 SQL;
     }
 
@@ -447,10 +483,15 @@ CREATE TABLE IF NOT EXISTS rooms (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   slug          TEXT NOT NULL UNIQUE,
   name          TEXT NOT NULL,
-  type          TEXT NOT NULL,
+  type          TEXT NOT NULL,              -- the room category name (kept in step with category_id)
+  category_id   INTEGER,                    -- room_categories.id: its table on the rate sheet
+  room_label    TEXT NOT NULL DEFAULT '',   -- room type on the rate sheet, e.g. Double Room
   tagline       TEXT NOT NULL DEFAULT '',
   description   TEXT NOT NULL DEFAULT '',
-  price         INTEGER NOT NULL,           -- per room per night, whole currency units
+  price         INTEGER NOT NULL,           -- room only (RO), per room per night, whole currency units
+  price_bb      INTEGER NOT NULL DEFAULT 0, -- bed and breakfast (0 = not offered)
+  price_hb      INTEGER NOT NULL DEFAULT 0, -- half board (0 = not offered)
+  price_fb      INTEGER NOT NULL DEFAULT 0, -- full board (0 = not offered)
   max_adults    INTEGER NOT NULL DEFAULT 2,
   max_children  INTEGER NOT NULL DEFAULT 0,
   capacity      INTEGER NOT NULL DEFAULT 2, -- guests the room sleeps
@@ -462,6 +503,19 @@ CREATE TABLE IF NOT EXISTS rooms (
   sort          INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS room_categories (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT NOT NULL,              -- e.g. Wooden Cabana (a table of the rate sheet)
+  sort        INTEGER NOT NULL DEFAULT 0,
+  whole_code  TEXT NOT NULL DEFAULT '',   -- short name on the rate sheet, e.g. W/VILLA
+  whole_label TEXT NOT NULL DEFAULT '',   -- every room together, e.g. Whole Villa ('' = not offered)
+  whole_pax   INTEGER NOT NULL DEFAULT 0, -- guests the whole category sleeps
+  whole_ro    INTEGER NOT NULL DEFAULT 0, -- whole category, per night
+  whole_bb    INTEGER NOT NULL DEFAULT 0,
+  whole_hb    INTEGER NOT NULL DEFAULT 0,
+  whole_fb    INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS bookings (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
   ref              TEXT NOT NULL UNIQUE,
@@ -469,6 +523,8 @@ CREATE TABLE IF NOT EXISTS bookings (
   package          TEXT NOT NULL DEFAULT 'room',  -- room|per_person|day_out
   package_id       INTEGER,                       -- per-person option (packages.id)
   package_name     TEXT NOT NULL DEFAULT '',      -- option name when booked
+  meal_plan        TEXT NOT NULL DEFAULT '',      -- a room booking: RO|BB|HB|FB ('' = RO)
+  whole_category_id INTEGER,                      -- took a whole room category at its whole price
   check_in         TEXT NOT NULL,           -- YYYY-MM-DD (arrival; the day itself for a day out)
   check_out        TEXT NOT NULL,           -- YYYY-MM-DD (departure, exclusive; the next day for a day out)
   nights           INTEGER NOT NULL,        -- 0 for a day out
@@ -493,6 +549,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   commission_value INTEGER NOT NULL DEFAULT 0,
   commission_to    TEXT NOT NULL DEFAULT '',         -- the agent or website that takes it
   hold_until       TEXT,                             -- YYYY-MM-DD: a pending reservation is released after this day
+  advance_amount   INTEGER,                          -- the advance it asks for (NULL = Booking setup, 0 = none, else this amount)
   event_slot       TEXT NOT NULL DEFAULT '',          -- an outdoor party: day|night|full
   event_others     TEXT NOT NULL DEFAULT '',          -- during a party, other guests: open|rooms (no other stays)|private
   status           TEXT NOT NULL DEFAULT 'pending',  -- pending|confirmed|checked_in|checked_out|cancelled
@@ -594,6 +651,7 @@ CREATE TABLE IF NOT EXISTS pos_payments (
   note       TEXT NOT NULL DEFAULT '',
   fee        INTEGER NOT NULL DEFAULT 0,                 -- commission or charges taken off before it reached the resort
   details    TEXT NOT NULL DEFAULT '',                   -- JSON: the extra payment fields
+  slip       TEXT NOT NULL DEFAULT '',                   -- file name of the payment slip in DATA_DIR/slips (empty = none)
   created_at TEXT NOT NULL,
   created_by TEXT NOT NULL DEFAULT '',
   voided_at  TEXT,
@@ -756,6 +814,18 @@ CREATE TABLE IF NOT EXISTS closures (
   created_by TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_closures_dates ON closures(starts_on, ends_on);
+
+-- payment slips guests upload from their invoice link, until staff record the payment (version 14)
+CREATE TABLE IF NOT EXISTS booking_slips (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  booking_id INTEGER NOT NULL,
+  slip       TEXT NOT NULL,                     -- file name in DATA_DIR/slips
+  amount     INTEGER,                           -- what the guest says they paid (optional)
+  note       TEXT NOT NULL DEFAULT '',          -- from the guest
+  created_at TEXT NOT NULL,
+  payment_id INTEGER                            -- pos_payments.id once staff record the payment with this slip
+);
+CREATE INDEX IF NOT EXISTS idx_booking_slips_booking ON booking_slips(booking_id);
 SQL;
     }
 
@@ -785,6 +855,10 @@ SQL;
         if ($ver < 8) self::migrateV8();
         if ($ver < 9) self::migrateV9();
         if ($ver < 10) self::migrateV10();
+        if ($ver < 11) self::migrateV11();
+        if ($ver < 12) self::migrateV12();
+        if ($ver < 13) self::migrateV13();
+        if ($ver < 14) self::migrateV14();
     }
 
     private static function setSchemaVersion(int $v): void
@@ -976,7 +1050,7 @@ SQL;
             self::$pdo->exec("ALTER TABLE bookings ADD COLUMN package_name TEXT NOT NULL DEFAULT ''");
         }
         // version 5 and 6 columns (before the schema below, which indexes some of them)
-        foreach (array_merge_recursive(self::V5_COLUMNS, self::V6_COLUMNS, self::V9_COLUMNS) as $table => $list) {
+        foreach (array_merge_recursive(self::V5_COLUMNS, self::V6_COLUMNS, self::V9_COLUMNS, self::V11_COLUMNS, self::V12_COLUMNS, self::V13_COLUMNS) as $table => $list) {
             $have = $cols($table);
             if (!$have) continue; // a new database: the schema creates the table whole
             foreach ($list as $col => [$sqliteDef]) if (!in_array($col, $have, true)) self::$pdo->exec("ALTER TABLE $table ADD COLUMN $col $sqliteDef");
@@ -1110,6 +1184,125 @@ SQL;
         }
         self::setSchemaVersion(10);
         error_log('[db] added booking reminders');
+    }
+
+    /** Version 11: the rate sheet — room categories, a price per meal plan, and the plan a room booking was made with. [sqlite, mysql] */
+    private const V11_COLUMNS = [
+        'rooms' => [
+            'category_id' => ['INTEGER', "INT UNSIGNED NULL COMMENT 'room_categories.id: its table on the rate sheet' AFTER type"],
+            'room_label' => ["TEXT NOT NULL DEFAULT ''", "VARCHAR(80) NOT NULL DEFAULT '' COMMENT 'room type on the rate sheet, e.g. Double Room' AFTER category_id"],
+            'price_bb' => ['INTEGER NOT NULL DEFAULT 0', "INT NOT NULL DEFAULT 0 COMMENT 'bed and breakfast, per night (0 = not offered)' AFTER price"],
+            'price_hb' => ['INTEGER NOT NULL DEFAULT 0', "INT NOT NULL DEFAULT 0 COMMENT 'half board, per night (0 = not offered)' AFTER price_bb"],
+            'price_fb' => ['INTEGER NOT NULL DEFAULT 0', "INT NOT NULL DEFAULT 0 COMMENT 'full board, per night (0 = not offered)' AFTER price_hb"],
+        ],
+        'bookings' => [
+            'meal_plan' => ["TEXT NOT NULL DEFAULT ''", "VARCHAR(2) COLLATE utf8mb4_bin NOT NULL DEFAULT '' COMMENT 'a room booking: RO|BB|HB|FB (empty = RO)' AFTER package_name"],
+            'whole_category_id' => ['INTEGER', "INT UNSIGNED NULL COMMENT 'a room booking that took a whole room category at its whole price' AFTER meal_plan"],
+        ],
+    ];
+
+    private static function migrateV11(): void
+    {
+        if (self::$driver === 'mysql') {
+            foreach (self::V11_COLUMNS as $table => $list) {
+                $have = array_column(self::$pdo->query("SHOW COLUMNS FROM $table")->fetchAll(), 'Field');
+                $add = [];
+                foreach ($list as $col => [, $mysqlDef]) if (!in_array($col, $have, true)) $add[] = "ADD COLUMN $col $mysqlDef";
+                if ($add) self::$pdo->exec("ALTER TABLE $table " . implode(', ', $add));
+            }
+            self::createMysqlTables(); // adds room_categories
+        }
+        self::applyRateSheet();
+        self::setSchemaVersion(11);
+        error_log('[db] added the rate sheet: room categories and meal plans');
+    }
+
+    /** Version 12: a booking's own advance (NULL = Booking setup's, 0 = none, else that amount). [sqlite, mysql] */
+    private const V12_COLUMNS = [
+        'bookings' => [
+            'advance_amount' => ['INTEGER', "INT NULL COMMENT 'the advance this booking asks for (NULL = Booking setup, 0 = none, else this amount)' AFTER hold_until"],
+        ],
+    ];
+
+    private static function migrateV12(): void
+    {
+        if (self::$driver === 'mysql') {
+            foreach (self::V12_COLUMNS as $table => $list) {
+                $have = array_column(self::$pdo->query("SHOW COLUMNS FROM $table")->fetchAll(), 'Field');
+                $add = [];
+                foreach ($list as $col => [, $mysqlDef]) if (!in_array($col, $have, true)) $add[] = "ADD COLUMN $col $mysqlDef";
+                if ($add) self::$pdo->exec("ALTER TABLE $table " . implode(', ', $add));
+            }
+        }
+        self::setSchemaVersion(12);
+        error_log('[db] added each booking\'s own advance');
+    }
+
+    /** Version 13: a payment can keep a photo or PDF of its bank slip (Pos::saveSlip). [sqlite, mysql] */
+    private const V13_COLUMNS = [
+        'pos_payments' => [
+            'slip' => ["TEXT NOT NULL DEFAULT ''", "VARCHAR(80) COLLATE utf8mb4_bin NOT NULL DEFAULT '' COMMENT 'file name of the payment slip in DATA_DIR/slips (empty = none)' AFTER details"],
+        ],
+    ];
+
+    private static function migrateV13(): void
+    {
+        if (self::$driver === 'mysql') {
+            foreach (self::V13_COLUMNS as $table => $list) {
+                $have = array_column(self::$pdo->query("SHOW COLUMNS FROM $table")->fetchAll(), 'Field');
+                $add = [];
+                foreach ($list as $col => [, $mysqlDef]) if (!in_array($col, $have, true)) $add[] = "ADD COLUMN $col $mysqlDef";
+                if ($add) self::$pdo->exec("ALTER TABLE $table " . implode(', ', $add));
+            }
+        }
+        self::setSchemaVersion(13);
+        error_log('[db] payments can keep their bank slip');
+    }
+
+    /** Version 14: guests upload their payment slip from the invoice link (booking_slips; SQLite gets it from its schema). */
+    private static function migrateV14(): void
+    {
+        if (self::$driver === 'mysql') self::createMysqlTables(); // adds booking_slips
+        self::setSchemaVersion(14);
+        error_log('[db] guests can upload their payment slip');
+    }
+
+    /**
+     * Put the resort's rate sheet (RoomsSeed::rateSheet) into an empty room_categories table: the
+     * categories, and each room's category, room type, guests and four prices. Rooms the sheet
+     * lists that the database lacks are added. Afterwards it is edited in Admin → Rate sheet.
+     */
+    private static function applyRateSheet(): void
+    {
+        $sheet = RoomsSeed::rateSheet();
+        if (!$sheet || (int) self::one('SELECT COUNT(*) AS n FROM room_categories')['n'] > 0) return;
+        $sleeps = fn () => (int) self::one('SELECT COALESCE(SUM(capacity), 0) AS n FROM rooms WHERE active = 1')['n'];
+        $capBefore = $sleeps();
+        $sort = 0;
+        foreach ($sheet as $i => $cat) {
+            [$code, $label, $pax, $wp] = $cat['whole'] ?? ['', '', 0, [0, 0, 0, 0]];
+            $catId = self::run('INSERT INTO room_categories (name, sort, whole_code, whole_label, whole_pax, whole_ro, whole_bb, whole_hb, whole_fb) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                [$cat['name'], $i + 1, $code, $label, $pax, ...$wp]);
+            foreach ($cat['rooms'] as $r) {
+                [$slug, $name, $roomLabel, $guests, [$ro, $bb, $hb, $fb]] = $r;
+                $vals = [$name, $cat['name'], $catId, $roomLabel, $guests, $ro, $bb, $hb, $fb, ++$sort];
+                $have = self::one('SELECT id FROM rooms WHERE slug = ?', [$slug]);
+                if ($have) {
+                    self::run('UPDATE rooms SET name = ?, type = ?, category_id = ?, room_label = ?, capacity = ?, price = ?, price_bb = ?, price_hb = ?, price_fb = ?, sort = ? WHERE id = ?',
+                        [...$vals, (int) $have['id']]);
+                    continue;
+                }
+                // a new room: the photos and features of a room like it, until it has its own
+                $like = self::one('SELECT images, features FROM rooms WHERE slug = ?', [$r['like'] ?? ''])
+                    ?? self::one("SELECT images, features FROM rooms WHERE images <> '[]' ORDER BY sort, id");
+                self::run('INSERT INTO rooms (name, type, category_id, room_label, capacity, price, price_bb, price_hb, price_fb, sort, slug, tagline, description, max_adults, max_children, beds, size_sqm, features, images, active)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
+                    [...$vals, $slug, '', '', $guests, 0, '', 0, $like['features'] ?? '[]', $like['images'] ?? '[]']);
+            }
+        }
+        // the hotel's capacity started as what the rooms sleep: it keeps doing so unless it was changed by hand
+        $cap = self::one("SELECT value FROM settings WHERE name = 'hotel_capacity'");
+        if ($cap && (int) $cap['value'] === $capBefore) self::run("UPDATE settings SET value = ? WHERE name = 'hotel_capacity'", [(string) $sleeps()]);
     }
 
     // ---------- timestamps ----------
