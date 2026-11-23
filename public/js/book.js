@@ -839,7 +839,8 @@
       mealPlan: isPerson() ? undefined : state.plan, // RO, BB, HB or FB
       wholeCategory: !isPerson() && state.whole ? state.whole.id : undefined, // a whole villa, at its one price
       checkIn: state.checkIn, checkOut: isDay() ? undefined : state.checkOut,
-      adults: isPerson() ? state.adults : undefined, children: isPerson() ? state.children : undefined,
+      // a room booking records the party size too, when the guest gave one
+      adults: isPerson() || groupSize ? state.adults : undefined, children: isPerson() || groupSize ? state.children : undefined,
       partyArea: !isDay() && state.partyArea, jblSpeaker: state.jblSpeaker,
       guestName: f.guestName.value, guestIdNo: f.guestIdNo.value, guestEmail: f.guestEmail.value, guestPhone: f.guestPhone.value,
       country: f.country.value, arrivalTime: f.arrivalTime.value, specialRequests: f.specialRequests.value,

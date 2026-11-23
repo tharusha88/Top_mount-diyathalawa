@@ -1503,7 +1503,7 @@ final class Bookings
             } elseif ($wantWhole) {
                 $cat = self::getCategory($wantWhole);
                 // a whole option switched off since keeps its price on this booking (as in priceLines)
-                if ($cat && !$cat['whole']) $cat = ['whole' => ['code' => '', 'label' => 'Whole', 'capacity' => 0, 'prices' => $cat['wholePrices']]] + $cat;
+                if ($cat && !$cat['whole']) $cat = ['legacy' => true, 'whole' => ['code' => '', 'label' => 'Whole', 'capacity' => 0, 'prices' => $cat['wholePrices']]] + $cat;
                 $catIds = $cat ? array_column(self::categoryRooms($cat['id']), 'id') : [];
                 if ($catIds && !array_diff($catIds, $roomIds)) $whole = $cat; // else a room of it left: priced room by room
             }
@@ -1543,6 +1543,8 @@ final class Bookings
             $plan = 'RO';
             $sets['meal_plan'] = '';
         }
+        // a whole option switched off since has no rate for a newly chosen plan: price its rooms one by one instead of refusing
+        if ($whole && !empty($whole['legacy']) && self::wholePrice($whole, $plan) <= 0) $whole = null;
         $wholeId = $whole ? $whole['id'] : null;
         if ($wholeId !== $cur['wholeCategoryId']) $sets['whole_category_id'] = $wholeId;
 
@@ -1638,6 +1640,12 @@ final class Bookings
         $whatChanged = $kind !== $cur['kind'] || ($pkg['id'] ?? null) !== $cur['packageId'] || ($roomsChanged && (count($roomIds) > 1 || count($curRoomIds) > 1))
             || isset($sets['meal_plan']) || array_key_exists('whole_category_id', $sets);
         if ($kind === 'room' && !$isBlock && ($roomsChanged || isset($sets['meal_plan']) || array_key_exists('whole_category_id', $sets))) self::requirePlan($plan, $roomList, $whole);
+        // guests must fit the rooms (as when booking) when the rooms, the whole villa or the guest numbers change
+        if ($kind === 'room' && !$isBlock && $roomList && ($roomsChanged || array_key_exists('whole_category_id', $sets) || isset($sets['adults']) || isset($sets['children']))
+            && $adults + $children > self::guestCapacity($roomList, $whole)) {
+            $cap = self::guestCapacity($roomList, $whole);
+            throw new BookingError((count($roomList) === 1 ? "{$roomList[0]['name']} sleeps" : 'These rooms sleep') . " up to $cap guest" . ($cap === 1 ? '' : 's') . '.');
+        }
         $rates = $isBlock || $kind === 'event' ? ['room' => null, 'adult' => null, 'child' => null] : self::ratesInput($patch, $kind, $room, $pkg, $whatChanged ? [] : $cur['rates'], $roomList, $plan, $whole);
         foreach (['room' => 'rate_room', 'adult' => 'rate_adult', 'child' => 'rate_child'] as $k => $col) {
             if ($rates[$k] !== $cur['rates'][$k]) $sets[$col] = $rates[$k];
