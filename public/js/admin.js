@@ -447,7 +447,7 @@
     return { path, q: new URLSearchParams(qs || '') };
   }
   let lastScreen = '';
-  const PAGE_PERM = { overview: 'bookings', calendar: 'bookings', bookings: 'bookings', new: 'bookings', menu: 'menu', coupons: 'coupons', finance: 'finance', bills: 'pos', setup: 'setup', website: 'site', chatbot: 'site', rooms: 'setup', rates: 'setup', users: 'users' };
+  const PAGE_PERM = { overview: 'bookings', calendar: 'bookings', bookings: 'bookings', new: 'bookings', menu: 'menu', coupons: 'coupons', finance: 'finance', bills: 'pos', setup: 'setup', website: 'site', media: 'site', chatbot: 'site', rooms: 'setup', rates: 'setup', users: 'users' };
   async function route() {
     if (!ME) return;
     document.body.classList.remove('side-open');
@@ -481,6 +481,7 @@
       else if (name === 'bills') await POS.bills(parts.slice(1), q);
       else if (name === 'setup') await SETUP.setup();
       else if (name === 'website') await SITE.website();
+      else if (name === 'media') await HOMEMEDIA.show();
       else if (name === 'chatbot') await CHAT.chatbot();
       else if (name === 'rooms') await viewRooms();
       else if (name === 'rates') await RATES.rates();
@@ -497,15 +498,16 @@
   const showReceipt = (p, b) => S.receiptDialog(docH, p, b, money);
   const showInvoice = (b, url) => S.invoiceDialog(docH, b, url, money);
 
-  // the POS menu + bills (admin-pos.js), booking setup (admin-setup.js), the website (admin-site.js) and coupons (admin-coupons.js)
+  // the POS menu + bills (admin-pos.js), booking setup (admin-setup.js), the website (admin-site.js), its photos and videos (admin-media.js) and coupons (admin-coupons.js)
   const helpers = {
     $, $$, esc, icon, money, fd, fdt, api, toast, setHead, view, st, today, openModal, closeModal, modalHead, methodOptions, reasonDialog, paymentDialog, askDialog, confirmBox,
-    openLibrary, img, hasPhoto: (k) => !!MEDIA[k], showReceipt, showInvoice, can, fdt,
+    openLibrary, img, hasPhoto: (k) => !!MEDIA[k], addMedia: (k, item) => { MEDIA = { ...MEDIA, [k]: item }; }, showReceipt, showInvoice, can, fdt,
     currency: () => (ME && ME.currency) || 'LKR', me: () => ME, refreshMe: async () => { ME = await api('/me'); return ME; },
   };
   const POS = window.YDPOS(helpers);
   const SETUP = window.YDSETUP(helpers);
   const SITE = window.YDSITE(helpers);
+  const HOMEMEDIA = window.YDMEDIA(helpers); // the home page's photos and videos (admin-media.js)
   const CHAT = window.YDCHAT(helpers);
   const COUPONS = window.YDCOUPONS(helpers);
   const RATES = window.YDRATES(helpers); // the room rate sheet (admin-rates.js)
@@ -648,6 +650,15 @@
         const r = await api(`/bookings/${q.dataset.id}`, { method: 'PATCH', body: { status, notifyGuest: true } });
         toast(`${r.booking.ref} ${STATUS[status].toLowerCase()}${r.emailed ? ' — guest emailed' : ''}`);
         refreshBadge(); route();
+      } catch (ex) { toast(ex.message, true); }
+      return;
+    }
+    const gc = e.target.closest('[data-gc-row]');
+    if (gc) {
+      e.preventDefault(); e.stopPropagation();
+      try {
+        const { booking } = await api(`/bookings/${gc.dataset.gcRow}`);
+        CONFIRM.dialog(booking, () => route());
       } catch (ex) { toast(ex.message, true); }
       return;
     }
@@ -881,7 +892,7 @@
     if (!bookings.length) { box.innerHTML = '<div class="empty">No bookings match these filters.</div>'; return; }
     const total = bookings.filter((b) => b.status !== 'cancelled').reduce((a, b) => a + b.totalAmount, 0);
     box.innerHTML = `<div class="table-wrap"><table class="tbl">
-      <thead><tr><th>Ref</th><th>Guest</th><th>Booking</th><th>Dates</th><th>Guests</th><th class="num">Total</th><th>Source</th><th>Status</th></tr></thead>
+      <thead><tr><th>Ref</th><th>Guest</th><th>Booking</th><th>Dates</th><th>Guests</th><th class="num">Total</th><th>Source</th><th>Status</th><th>Guest link</th></tr></thead>
       <tbody>${bookings.map((b) => `<tr data-open="${b.id}">
         <td class="ref">${esc(b.ref)}</td>
         <td><b>${esc(b.guestName)}</b><span class="sub">${esc(b.guestPhone || b.guestEmail || '')}</span></td>
@@ -893,6 +904,7 @@
         <td class="num">${money(b.totalAmount)}</td>
         <td>${esc(b.sourceLabel)}</td>
         <td>${st(b.status)}${CONFIRM.chip(b) ? `<span class="sub">${CONFIRM.chip(b)}</span>` : ''}${b.slipWaiting ? '<span class="sub"><span class="gc-chip gc-chip--slip" title="The guest sent a payment slip that is not recorded yet">🧾 Slip sent</span></span>' : ''}</td>
+        <td>${b.source === 'block' || !['pending', 'confirmed'].includes(b.status) ? '' : `<button type="button" class="abtn abtn--sm" data-gc-row="${b.id}" title="Issue a confirmation link for the guest">${icon('a-check', 14)}${b.guestConfirm ? 'View link' : 'Issue link'}</button>`}</td>
       </tr>`).join('')}</tbody></table></div>
       <div class="tbl-foot">${bookings.length} booking${bookings.length > 1 ? 's' : ''} · ${money(total)} excluding cancelled</div>`;
   }

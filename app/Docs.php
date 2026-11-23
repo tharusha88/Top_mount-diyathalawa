@@ -169,14 +169,15 @@ final class Docs
         $site = Site::info();
         $paper = self::paper();
         $bar = $embed ? '' : '<div class="doc-bar no-print"><span>' . self::esc($site['name']) . '</span>'
-            . '<button type="button" class="doc-btn" data-print>Print / save as PDF</button></div>';
+            . '<span class="doc-bar__btns"><button type="button" class="doc-btn" data-download>Download PDF</button>'
+            . '<button type="button" class="doc-btn doc-btn--ghost" data-print>Print</button></span></div>';
         return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
             . '<meta name="robots" content="noindex, nofollow"><title>' . self::esc($title . ' — ' . $site['name']) . '</title>'
             . '<link rel="icon" href="/media/icon-32.png" sizes="32x32"><link rel="stylesheet" href="/css/docs.css">'
             . '<style id="doc-page">' . self::pageCss($paper, self::printedAt(), $issuedBy) . '</style></head>'
             . '<body class="doc-body paper-' . strtolower($paper) . ($embed ? ' is-embed' : '') . '" data-paper="' . $paper . '"'
             . ' data-issued-by="' . self::esc($issuedBy) . '" data-tz="' . self::esc(Config::get()['timezone']) . '">' . $bar . $body
-            . '<script src="/js/docs.js"></script></body></html>';
+            . ($embed ? '' : '<script src="/js/pdf.js"></script>') . '<script src="/js/docs.js"></script></body></html>';
     }
 
     private static function head(string $kind, string $no, string $date): string

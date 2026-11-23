@@ -10,6 +10,9 @@ dist/
 # temporary files from the photo library
 public/media/*.lock
 public/media/*.tmp
+# photos and videos uploaded in the admin panel (site content, kept on the server)
+public/media/upload-*
+public/media/video/
 # database exports (guest details and the admin password hash): only the check script is kept
 database/*
 !database/check-database.sql

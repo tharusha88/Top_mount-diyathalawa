@@ -433,6 +433,36 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
 .ph-row__img img { width: 100%; height: 100%; object-fit: cover; }
 .ph-list__foot { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .ph-list__foot [data-save-list] { margin-left: auto; }
+/* Admin → Photos & videos (admin-media.js) */
+.media-admin { display: grid; gap: 18px; }
+.media-admin .card__head { flex-wrap: wrap; }
+.media-admin .card__head .src { flex: 1 1 260px; text-align: right; }
+.ph-card__img { position: relative; }
+.ph-card__count { position: absolute; right: 8px; bottom: 8px; padding: 2px 9px; border-radius: 999px; background: rgba(12, 24, 16, 0.72); color: #fff; font-size: 0.72rem; font-weight: 700; }
+.ph-card__changed { font-size: 0.72rem; font-weight: 700; color: var(--moss); }
+.abtn.is-disabled { opacity: 0.5; pointer-events: none; }
+.vid-list { list-style: none; margin: 0; display: grid; gap: 0; }
+.vid { display: grid; grid-template-columns: minmax(180px, 300px) minmax(0, 1fr); gap: 18px; align-items: start; padding: 16px 0; border-top: 1px solid var(--line-2); }
+.vid:first-child { padding-top: 0; border-top: 0; }
+.vid:last-child { padding-bottom: 0; }
+.vid__poster, .vid__phone-img { position: relative; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: var(--line-2); display: grid; place-items: center; }
+.vid__poster img, .vid__phone-img img { width: 100%; height: 100%; object-fit: cover; }
+.vid__play { position: absolute; inset: 50% auto auto 50%; translate: -50% -50%; width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(12, 24, 16, 0.7); color: #fff; display: grid; place-items: center; cursor: pointer; }
+.vid__play:hover, .vid__play:focus-visible { background: var(--forest); }
+.vid__phone-img .vid__play { width: 32px; height: 32px; }
+.vid__body { display: grid; gap: 8px; min-width: 0; }
+.vid__body h3 { font-size: 0.98rem; margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vid__body .src { margin: 0; }
+.vid__file { margin: 0; font-size: 0.82rem; color: var(--ink-2); }
+.vid__progress { position: relative; height: 30px; border-radius: 8px; background: var(--line-2); overflow: hidden; }
+.vid__progress i { position: absolute; inset: 0 auto 0 0; background: color-mix(in srgb, var(--moss) 35%, #fff); transition: width 0.3s; }
+.vid__progress span { position: relative; display: block; padding: 6px 10px; font-size: 0.8rem; font-weight: 600; }
+.vid__phone { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 12px; align-items: start; margin-top: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
+.vid__phone-img { aspect-ratio: 9 / 16; }
+.vid__phone-img:empty { background: repeating-linear-gradient(45deg, var(--line-2) 0 6px, transparent 6px 12px); }
+.vid__phone-body { display: grid; gap: 6px; font-size: 0.86rem; }
+.vid-preview { width: 100%; max-height: 70vh; border-radius: 10px; background: #000; }
+.vid-preview--tall { width: auto; max-width: 100%; height: 70vh; margin: 0 auto; display: block; }
 
 /* payments with their receipts, payment fields, invoice / receipt dialog */
 .pay-list { display: grid; gap: 6px; }
@@ -665,6 +695,8 @@ td > .fin-barline { display: inline-block; width: 90px; vertical-align: middle; 
   .top__new span { display: none; }
   .grid3, .grid4 { grid-template-columns: 1fr 1fr; }
   .span3 { grid-column: 1 / -1; }
+  .vid { grid-template-columns: 1fr; }
+  .media-admin .card__head .src { text-align: left; }
 }
 @media (max-width: 560px) {
   .main { padding: 18px 14px 50px; }

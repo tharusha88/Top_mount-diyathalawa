@@ -107,12 +107,13 @@
         </div>
         <h2 data-done-title>Thank you!</h2>
         <p class="lead" data-done-text></p>
-        <div class="bk-ref">Booking reference <b data-done-ref></b></div>
+        <div class="bk-ref">Booking reference <b data-done-ref></b> <button type="button" class="bk-ref__copy" data-copy data-done-ref-copy>Copy</button></div>
+        <!-- what to do next (pay, or nothing): the one card with buttons; none once the booking is confirmed -->
         <div class="bk-pay" data-done-pay></div>
-        <div class="bk-actions bk-actions--center">
-          <a class="btn" data-done-invoice target="_blank" rel="noopener"><svg width="18" height="18"><use href="#i-doc"/></svg> View your invoice</a>
-          <a class="btn btn--ghost" data-done-wa target="_blank" rel="noopener"><svg width="18" height="18"><use href="#i-wa"/></svg> Message us on WhatsApp</a>
-          <a class="btn btn--amber" href="/">Visit Top Mountain</a>
+        <div class="bk-done__links">
+          <a data-done-invoice target="_blank" rel="noopener"><svg width="16" height="16" aria-hidden="true"><use href="#i-doc"/></svg>View invoice</a>
+          <a data-done-wa target="_blank" rel="noopener" hidden><svg width="16" height="16" aria-hidden="true"><use href="#i-wa"/></svg>WhatsApp us</a>
+          <a href="/">Visit Top Mountain<svg width="16" height="16" aria-hidden="true"><use href="#i-arrow"/></svg></a>
         </div>
       </section>
 

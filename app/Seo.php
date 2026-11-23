@@ -312,12 +312,13 @@ final class Seo
             '<meta property="og:url" content="' . $e($url) . '">',
             '<meta property="og:site_name" content="' . $e($f['name']) . '">',
         ];
-        $img = $page === 'book' ? 'cabana-hillside' : 'hero-poster';
+        // the booking section's photo and the hero's cover, as Admin → Photos & videos has them
+        $img = $page === 'book' ? HomeMedia::book() : (HomeMedia::poster('hero') ?: 'hero-poster');
         if (($src = Content::imageUrl($img)) !== null) {
             [$w, $h] = Content::imageSize($img);
             $tags[] = '<meta property="og:image" content="' . $e($src) . '">';
             if ($w && $h) $tags[] = '<meta property="og:image:width" content="' . $w . '"><meta property="og:image:height" content="' . $h . '">';
-            $tags[] = '<meta property="og:image:alt" content="' . $e(Content::image($img)['alt'] ?? $f['name']) . '">';
+            $tags[] = '<meta property="og:image:alt" content="' . $e((Content::image($img)['alt'] ?? '') ?: $f['name']) . '">';
         }
         $tags[] = '<meta name="twitter:card" content="summary_large_image">';
         if ($cfg['googleVerification'] !== '') $tags[] = '<meta name="google-site-verification" content="' . $e($cfg['googleVerification']) . '">';
@@ -380,19 +381,20 @@ final class Seo
             ];
         } else {
             $modified = max(array_map(fn ($p) => (int) @filemtime($p), [YDR_ROOT . '/views/index.html', YDR_PUBLIC . '/js/data/content.js', YDR_PUBLIC . '/js/data/media.js']));
+            $hp = HomeMedia::poster('hero') ?: 'hero-poster';
             $graph = [
                 $website,
                 array_filter([
                     '@type' => 'WebPage', '@id' => "$base/#webpage", 'url' => "$base/", 'name' => $title, 'description' => $desc,
                     'isPartOf' => ['@id' => "$base/#website"], 'about' => $resort, 'mainEntity' => $resort,
-                    'primaryImageOfPage' => Content::imageUrl('hero-poster') ? ['@id' => "$base/#primaryimage"] : null,
+                    'primaryImageOfPage' => Content::imageUrl($hp) ? ['@id' => "$base/#primaryimage"] : null,
                     'inLanguage' => 'en', 'dateModified' => $modified ? date('c', $modified) : null,
                 ], fn ($v) => $v !== null),
                 self::resort(),
             ];
-            if (($src = Content::imageUrl('hero-poster')) !== null) {
-                [$w, $h] = Content::imageSize('hero-poster');
-                $graph[] = ['@type' => 'ImageObject', '@id' => "$base/#primaryimage", 'url' => $src, 'contentUrl' => $src, 'width' => $w, 'height' => $h, 'caption' => Content::image('hero-poster')['alt'] ?? ''];
+            if (($src = Content::imageUrl($hp)) !== null) {
+                [$w, $h] = Content::imageSize($hp);
+                $graph[] = ['@type' => 'ImageObject', '@id' => "$base/#primaryimage", 'url' => $src, 'contentUrl' => $src, 'width' => $w, 'height' => $h, 'caption' => (Content::image($hp)['alt'] ?? '') ?: self::facts()['name']];
             }
             if ($film = self::film($html)) $graph[] = $film;
             $near = Content::nearby();
@@ -532,7 +534,7 @@ final class Seo
         $base = self::base();
         $e = fn ($s) => htmlspecialchars((string) $s, ENT_XML1 | ENT_QUOTES, 'UTF-8');
         $C = Content::get();
-        $keys = ['hero-poster', 'estate-golden', 'aerial-poster', 'cabana-hillside'];
+        $keys = [HomeMedia::poster('hero'), HomeMedia::poster('film'), HomeMedia::poster('aerial'), HomeMedia::book()];
         foreach ($C['highlights'] ?? [] as $x) $keys[] = (string) ($x['image'] ?? '');
         foreach (Content::rooms() as $r) $keys[] = (string) $r['photos'][0];
         foreach ([...($C['experiences'] ?? []), ...($C['diningPlaces'] ?? [])] as $x) $keys[] = (string) ($x['image'] ?? '');

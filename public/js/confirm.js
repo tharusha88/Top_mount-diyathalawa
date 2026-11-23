@@ -134,29 +134,41 @@
   });
 
   // ---------- after confirming ----------
+  /** The "next step" card (as on the booking page's done step): how to pay, or that there is nothing
+   *  to pay now, with Call and WhatsApp buttons. Empty once there is nothing left to do before arrival. */
   function payHtml() {
     const P = C.pay || {};
-    const phone = `<a href="tel:${esc(tel(P.phone || site.phone))}"><b>${esc(P.phone || site.phone || '')}</b></a>`;
-    if (C.status !== 'pending') return '';
-    if (C.atResort) {
-      return `<p>There is <b>nothing to pay now</b>: you pay at the resort. We will call you to finalise your booking — for any questions, call us on ${phone}.</p>
-        <dl class="bk-paylist"><div><dt>Total, paid at the resort</dt><dd><b>${money(C.total)}</b></dd></div><div><dt>Booking reference</dt><dd><b>${esc(C.ref)}</b></dd></div></dl>
-        ${P.note ? `<p class="bk-pay__note">${esc(P.note)}</p>` : ''}`;
-    }
-    if (!(C.due > 0)) return '';
-    const hasBank = !!P.accountNo;
-    const rows = [
-      [esc(C.dueLabel), `<b>${money(C.due)}</b>`],
-      hasBank && P.bank ? ['Bank', esc(P.bank)] : null,
-      hasBank && P.accountName ? ['Account name', esc(P.accountName)] : null,
-      hasBank ? ['Account number', `<b class="bk-pay__no">${esc(P.accountNo)}</b> <button type="button" class="linkish" data-copy="${esc(P.accountNo)}">Copy</button>`] : null,
-      hasBank && P.branch ? ['Branch', esc(P.branch)] : null,
-      ['Payment reference', `<b>${esc(C.ref)}</b>`],
-    ].filter(Boolean);
+    if (C.status !== 'pending' || (!C.atResort && !(C.due > 0))) return '';
+    const phoneNo = P.phone || site.phone || '';
+    const reach = wa ? 'call or WhatsApp us' : 'call us';
+    const hasBank = !C.atResort && !!P.accountNo;
+    const isAdv = !C.atResort && C.advance > 0 && C.paid < C.advance; // an advance, not the whole amount
+    const what = isAdv ? 'the advance' : 'the payment';
     const by = C.holdUntil ? ` by <b>${esc(fmtDate(C.holdUntil, long))}</b>` : '';
-    return `<p>${hasBank ? `To secure it, please pay${by} to the account below, then call us on ${phone}.` : `To secure it, please call us on ${phone}${by} to arrange the payment.`} We confirm your booking as soon as it is received.</p>
-      <dl class="bk-paylist">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
-      ${P.note ? `<p class="bk-pay__note">${esc(P.note)}</p>` : ''}`;
+    const rows = C.atResort
+      ? [['Total, paid at the resort', `<b>${money(C.total)}</b>`, 'is-amount']]
+      : [
+        [`${esc(C.dueLabel)}${isAdv ? `<small>of ${money(C.total)}</small>` : ''}`, `<b>${money(C.due)}</b>`, 'is-amount'],
+        hasBank && P.bank ? ['Bank', esc(P.bank)] : null,
+        hasBank && P.accountName ? ['Account name', esc(P.accountName)] : null,
+        hasBank ? ['Account number', `<b class="bk-pay__no">${esc(P.accountNo)}</b> <button type="button" class="linkish" data-copy="${esc(P.accountNo)}">Copy</button>`] : null,
+        hasBank && P.branch ? ['Branch', esc(P.branch)] : null,
+        hasBank ? ['Payment reference', `<b>${esc(C.ref)}</b>`] : null, // to write on the transfer
+      ];
+    const title = C.atResort ? 'Nothing to pay now' : isAdv ? 'Pay the advance to confirm' : 'Pay to confirm your booking';
+    const text = C.atResort ? 'You pay at the resort. We will call you to finalise your booking.'
+      : hasBank ? `Pay ${what}${by} to the account below, then ${reach}. We confirm your booking as soon as it is received.`
+        : `${reach[0].toUpperCase()}${reach.slice(1)}${by} to arrange ${what}. We confirm your booking as soon as it is received.`;
+    const buttons = [
+      phoneNo ? `<a class="btn btn--sm" href="tel:${esc(tel(phoneNo))}">Call ${esc(phoneNo)}</a>` : '',
+      wa ? `<a class="btn btn--sm btn--ghost" href="${esc(waUrl(`Hello ${site.name}! My booking reference is ${C.ref}.`))}" target="_blank" rel="noopener"><svg width="16" height="16" aria-hidden="true"><use href="#i-wa"/></svg>WhatsApp us</a>` : '',
+    ].join('');
+    return `<p class="eyebrow">${C.atResort ? 'Payment' : 'Next step'}</p>
+      <h3 class="bk-pay__title">${title}</h3>
+      <p>${text}</p>
+      <dl class="bk-paylist">${rows.filter(Boolean).map(([k, v, cls]) => `<div${cls ? ` class="${cls}"` : ''}><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+      ${P.note ? `<p class="bk-pay__note">${esc(P.note)}</p>` : ''}
+      ${buttons ? `<div class="bk-pay__actions">${buttons}</div>` : ''}`;
   }
 
   function renderDone(justNow) {
@@ -169,10 +181,14 @@
         : `Thank you for confirming. ${C.holdUntil ? `We're holding your booking until ${fmtDate(C.holdUntil, long)}: it` : 'It'} is confirmed once the advance is received.`;
     $('[data-done-text]').textContent = earlier + text + (justNow && C.guest.guestEmail ? ` We've emailed the details to ${C.guest.guestEmail}.` : '');
     $('[data-done-ref]').textContent = C.ref;
-    $('[data-done-pay]').innerHTML = payHtml();
+    $('[data-done-ref-copy]').dataset.copy = C.ref;
+    const pay = payHtml();
+    $('[data-done-pay]').innerHTML = pay;
     $('[data-done-invoice]').href = C.invoiceUrl;
+    // WhatsApp sits in the card while there is something to pay; otherwise it joins the links
     const w = $('[data-done-wa]');
-    if (wa) w.href = waUrl(`Hello ${site.name}! My booking reference is ${C.ref}.`); else w.hidden = true;
+    w.hidden = !wa || !!pay;
+    if (wa) w.href = waUrl(`Hello ${site.name}! My booking reference is ${C.ref}.`);
   }
 
   function renderClosed() {

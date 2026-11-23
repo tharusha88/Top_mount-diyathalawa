@@ -100,9 +100,11 @@ test('bad dates, emails and guest numbers are refused', function () use ($guest,
     throws(fn () => B::createBooking(['adults' => 3] + $guest + ['room' => 'kitul-canopy-cabin', 'checkIn' => $d(20), 'checkOut' => $d(21)]), '/sleeps up to 2 guests/');
 });
 
-test('website guests give their NIC or passport number; staff may leave it out', function () use ($guest, $d, $room) {
-    $noId = array_diff_key($guest, ['guestIdNo' => 1]);
-    throws(fn () => B::createBooking($noId + ['room' => 'kitul-canopy-cabin', 'checkIn' => $d(500), 'checkOut' => $d(501)]), '/NIC or passport/');
+test('NIC or passport number and email are optional, but checked when given', function () use ($guest, $d, $room) {
+    $noId = array_diff_key($guest, ['guestIdNo' => 1, 'guestEmail' => 1]);
+    $anon = B::createBooking($noId + ['room' => 'kitul-canopy-cabin', 'checkIn' => $d(510), 'checkOut' => $d(511)]);
+    eq($anon['guestIdNo'], '');
+    eq($anon['guestEmail'], '');
     throws(fn () => B::createBooking(['guestIdNo' => '12'] + $guest + ['room' => 'kitul-canopy-cabin', 'checkIn' => $d(500), 'checkOut' => $d(501)]), '/check the NIC/');
     $b = B::createBooking(['guestIdNo' => '  901234567v '] + $guest + ['room' => 'kitul-canopy-cabin', 'checkIn' => $d(500), 'checkOut' => $d(501)]);
     eq($b['guestIdNo'], '901234567V', 'tidied');

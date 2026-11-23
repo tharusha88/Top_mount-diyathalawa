@@ -4,7 +4,21 @@
 */
 (() => {
   const M = window.TMR_MEDIA || { images: {}, videos: {} };
-  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  /* The photos and videos changed in Admin → Photos & videos (app/HomeMedia.php), laid over the
+     media build before anything is drawn: uploaded photos and replaced videos join TMR_MEDIA, and
+     content.js items get the photo chosen for them (by list and position). */
+  const changed = window.BOOT && window.BOOT.homeMedia;
+  if (changed) {
+    Object.assign(M.images, changed.images || {});
+    Object.assign(M.videos, changed.videos || {});
+    const C = window.TMR_CONTENT || {};
+    Object.entries(changed.content || {}).forEach(([list, picks]) => Object.entries(picks).forEach(([i, key]) => {
+      const item = (C[list] || [])[i];
+      if (item) item[list === 'rooms' ? 'photos' : 'image'] = key;
+    }));
+  }
+  const esc =s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   const image = key => {
     const m = M.images[key];

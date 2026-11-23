@@ -17,8 +17,24 @@ final class Content
     private static ?array $content = null;
     private static ?array $media = null;
 
-    /** window.TMR_CONTENT from js/data/content.js, as an array ([] if it can't be read). */
+    /** content.js with the photos chosen in Admin → Photos & videos (HomeMedia). */
     public static function get(): array
+    {
+        return HomeMedia::apply(self::raw());
+    }
+
+    /** media.js with the uploads the page shows and the videos changed in Admin → Photos & videos. */
+    public static function media(): array
+    {
+        $m = self::rawMedia();
+        $add = HomeMedia::media();
+        $m['images'] = $add['images'] + $m['images'];
+        $m['videos'] = $add['videos'] + $m['videos'];
+        return $m;
+    }
+
+    /** window.TMR_CONTENT from js/data/content.js as written, as an array ([] if it can't be read). */
+    public static function raw(): array
     {
         if (self::$content !== null) return self::$content;
         $v = null;
@@ -31,7 +47,7 @@ final class Content
     }
 
     /** window.TMR_MEDIA from js/data/media.js (JSON written by tools/build_media.py): images and videos by key. */
-    public static function media(): array
+    public static function rawMedia(): array
     {
         if (self::$media !== null) return self::$media;
         $src = self::file('media.js');

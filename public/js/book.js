@@ -212,6 +212,22 @@
       $('[data-sum-lines]').innerHTML = q.lines.map(([label, detail, amount]) => `<div class="sum__line"><span>${esc(label)}<small>${esc(detail)}</small></span><span>${money(amount)}</span></div>`).join('')
         + (q.off ? `<div class="sum__line sum__line--off"><span>Coupon ${esc(state.coupon.code)}<small>${esc(state.coupon.label)}</small></span><span>− ${money(q.off)}</span></div>` : '');
       $('[data-sum-total]').textContent = money(q.total);
+      // the advance, worked out like Bookings::advanceOf (the booking's Booking-setup rule)
+      const total = Math.max(0, q.total);
+      let adv = 0, pct = null;
+      if (PAY.advanceOn) {
+        if (PAY.advanceType === 'amount' && PAY.advanceAmount > 0) adv = Math.min(PAY.advanceAmount, total);
+        else if (PAY.advanceType !== 'amount' && PAY.advancePct > 0) { adv = Math.round(total * PAY.advancePct / 100); pct = PAY.advancePct; }
+        else adv = total;
+      }
+      const advRow = $('[data-sum-adv]'), balRow = $('[data-sum-bal]');
+      advRow.hidden = !(PAY.advanceOn && adv > 0);
+      balRow.hidden = advRow.hidden || adv >= total;
+      if (!advRow.hidden) {
+        $('[data-sum-adv-label]').textContent = adv >= total ? 'Pay in advance' : `Advance to pay${pct !== null ? ` (${pct}%)` : ''}`;
+        $('[data-sum-adv-amt]').textContent = money(adv);
+        $('[data-sum-bal-amt]').textContent = money(total - adv);
+      }
     }
     const meals = isPerson() ? (state.pkg ? [state.pkg.description, isDay() ? '' : 'Rooms prepared for your group'].filter(Boolean).join(' · ') : '')
       : state.plan !== 'RO' ? `${planOf(state.plan).name}: ${planOf(state.plan).includes.toLowerCase()}, every day of your stay` : '';
@@ -718,8 +734,10 @@
     const check = (input, ok, msg) => { fieldError(input, ok ? '' : msg); if (!ok && !first) first = input; };
     check(f.guestName, f.guestName.value.trim().length >= 2, 'Please tell us your name.');
     const idNo = f.guestIdNo.value.trim().toUpperCase();
-    check(f.guestIdNo, /^[A-Z0-9][A-Z0-9 \-/]{3,39}$/.test(idNo) && (idNo.match(/[A-Z0-9]/g) || []).length >= 5, 'Please enter your NIC or passport number.');
-    check(f.guestEmail, /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.guestEmail.value.trim()), 'Please enter a valid email.');
+    // NIC / passport and email are optional: only checked when filled in
+    check(f.guestIdNo, idNo === '' || (/^[A-Z0-9][A-Z0-9 \-/]{3,39}$/.test(idNo) && (idNo.match(/[A-Z0-9]/g) || []).length >= 5), 'That NIC or passport number does not look right.');
+    const mail = f.guestEmail.value.trim();
+    check(f.guestEmail, mail === '' || /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail), 'Please enter a valid email, or leave it empty.');
     check(f.guestPhone, f.guestPhone.value.replace(/\D/g, '').length >= 7, 'Please enter a phone number we can reach you on.');
     if (f.slip) check(f.slip, slipFile() !== false, 'The slip must be a photo (JPG, PNG, WebP) or a PDF, up to 10 MB.');
     check(f.agree, f.agree.checked, '');
@@ -862,38 +880,53 @@
 
   // ---------- step 4: done, and the "booking pending" window ----------
   const tel = (s) => String(s || '').replace(/[^\d+]/g, '');
-  function payHtml(b) {
+  // what was booked, in words (for the WhatsApp message)
+  const bookedWhat = (b) => b.package === 'day_out' ? `a ${b.packageLabel.toLowerCase()} on ${b.checkIn}`
+    : b.kind === 'room' ? `${b.place || b.roomName} (${b.checkIn} to ${b.checkOut})`
+      : `${b.packageLabel.toLowerCase()} for ${b.adults + b.children} (${b.checkIn} to ${b.checkOut})`;
+  /** How to pay (or that there is nothing to pay), with the buttons for it. `inDone`: the done step's card,
+   *  which has its own heading and shows the booking reference above it (the pending window doesn't). */
+  function payHtml(b, inDone = false) {
     const hasBank = !!PAY.accountNo;
     const adv = b.advance || { required: true, amount: 0, full: true, pct: null };
-    const phone = `<a href="tel:${esc(tel(PAY.phone))}"><b>${esc(PAY.phone || site.phone || '')}</b></a>`;
+    const phoneNo = PAY.phone || site.phone || '';
     const wa = String(PAY.whatsapp || site.whatsapp || '').replace(/\D/g, '');
-    const actions = `<div class="bk-pay__actions">
-        <a class="btn btn--sm" href="tel:${esc(tel(PAY.phone))}">Call ${esc(PAY.phone || '')}</a>
-        ${wa ? `<a class="btn btn--sm btn--ghost" href="https://wa.me/${wa}?text=${encodeURIComponent(`Hello Top Mountain Resort! My booking reference is ${b.ref}.`)}" target="_blank" rel="noopener">WhatsApp us</a>` : ''}
-      </div>`;
-    // no advance: nothing to pay now, it is all paid at the resort
-    if (!adv.required) {
-      return `<p>There is <b>nothing to pay now</b>: you pay at the resort. We will call you to confirm your booking — for any questions, call us on ${phone}.</p>
-      <dl class="bk-paylist">${[['Total, paid at the resort', `<b>${money(b.totalAmount)}</b>`], ['Booking reference', `<b>${esc(b.ref)}</b>`]].map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
-      ${PAY.note ? `<p class="bk-pay__note">${esc(PAY.note)}</p>` : ''}
-      ${actions}`;
-    }
-    const part = !adv.full && adv.amount > 0; // an advance smaller than the total
-    const rows = [
-      part ? ['Advance', `<b>${money(adv.amount)}</b> <small>(${adv.pct !== null ? `${adv.pct}% of ` : 'of '}${money(b.totalAmount)})</small>`] : ['Amount to pay', `<b>${money(b.totalAmount)}</b>`],
-      hasBank && PAY.bank ? ['Bank', esc(PAY.bank)] : null,
-      hasBank && PAY.accountName ? ['Account name', esc(PAY.accountName)] : null,
-      hasBank ? ['Account number', `<b class="bk-pay__no">${esc(PAY.accountNo)}</b> <button type="button" class="linkish" data-copy="${esc(PAY.accountNo)}">Copy</button>`] : null,
-      hasBank && PAY.branch ? ['Branch', esc(PAY.branch)] : null,
-      ['Payment reference', `<b>${esc(b.ref)}</b>`],
-    ].filter(Boolean);
+    const reach = wa ? 'call or WhatsApp us' : 'call us';
+    const part = adv.required && !adv.full && adv.amount > 0; // an advance smaller than the total
     const what = part ? 'the advance' : 'the payment';
     // once paid, the guest uploads the slip on their invoice (Docs::slipBox) instead of calling
-    const slip = hasBank && b.invoiceUrl ? `${b.invoiceUrl}#slip` : '';
-    return `<p>${hasBank ? `To confirm it, please pay ${what} to the account below, then ${slip ? `<a href="${esc(slip)}" target="_blank" rel="noopener"><b>upload the payment slip</b></a> or ` : ''}call us on` : 'To confirm it, please call us on'} ${phone}${hasBank ? '' : ` to arrange ${what}`}. We confirm your booking as soon as ${what} is received.</p>
-      <dl class="bk-paylist">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+    const slip = adv.required && hasBank && b.invoiceUrl ? `${b.invoiceUrl}#slip` : '';
+    const refRow = hasBank || !inDone ? [hasBank ? 'Payment reference' : 'Booking reference', `<b>${esc(b.ref)}</b> <button type="button" class="linkish" data-copy="${esc(b.ref)}">Copy</button>`] : null;
+    const rows = !adv.required
+      ? [['Total, paid at the resort', `<b>${money(b.totalAmount)}</b>`, 'is-amount'], refRow]
+      : [
+        part ? [`Advance<small>${adv.pct !== null ? `${adv.pct}% of ` : 'of '}${money(b.totalAmount)}</small>`, `<b>${money(adv.amount)}</b>`, 'is-amount']
+          : ['Amount to pay', `<b>${money(b.totalAmount)}</b>`, 'is-amount'],
+        hasBank && PAY.bank ? ['Bank', esc(PAY.bank)] : null,
+        hasBank && PAY.accountName ? ['Account name', esc(PAY.accountName)] : null,
+        hasBank ? ['Account number', `<b class="bk-pay__no">${esc(PAY.accountNo)}</b> <button type="button" class="linkish" data-copy="${esc(PAY.accountNo)}">Copy</button>`] : null,
+        hasBank && PAY.branch ? ['Branch', esc(PAY.branch)] : null,
+        refRow,
+      ];
+    const head = !inDone ? ''
+      : `<p class="eyebrow">${adv.required ? 'Next step' : 'Payment'}</p>
+        <h3 class="bk-pay__title">${!adv.required ? 'Nothing to pay now' : part ? 'Pay the advance to confirm' : 'Pay to confirm your booking'}</h3>`;
+    const text = !adv.required
+      ? `${inDone ? 'You pay at the resort.' : 'There is <b>nothing to pay now</b>: you pay at the resort.'} We will call you to confirm your booking.`
+      : hasBank
+        ? `Pay ${what} to the account below, then ${slip ? `upload your payment slip, or ${reach}` : reach}. We confirm your booking as soon as ${what} is received.`
+        : `${reach[0].toUpperCase()}${reach.slice(1)} to arrange ${what}. We confirm your booking as soon as it is received.`;
+    const waText = `Hello Top Mountain Resort! I just booked ${bookedWhat(b)}. My booking reference is ${b.ref}.`;
+    // one main action (upload the slip, or else call), the rest outlined
+    const buttons = [
+      slip ? `<a class="btn btn--sm" href="${esc(slip)}" target="_blank" rel="noopener">Upload payment slip</a>` : '',
+      phoneNo ? `<a class="btn btn--sm${slip ? ' btn--ghost' : ''}" href="tel:${esc(tel(phoneNo))}">Call ${esc(phoneNo)}</a>` : '',
+      wa ? `<a class="btn btn--sm btn--ghost" href="https://wa.me/${wa}?text=${encodeURIComponent(waText)}" target="_blank" rel="noopener"><svg width="16" height="16" aria-hidden="true"><use href="#i-wa"/></svg>WhatsApp us</a>` : '',
+    ].join('');
+    return `${head}<p>${text}</p>
+      <dl class="bk-paylist">${rows.filter(Boolean).map(([k, v, cls]) => `<div${cls ? ` class="${cls}"` : ''}><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
       ${PAY.note ? `<p class="bk-pay__note">${esc(PAY.note)}</p>` : ''}
-      ${slip ? actions.replace('<div class="bk-pay__actions">', `<div class="bk-pay__actions"><a class="btn btn--sm btn--amber" href="${esc(slip)}" target="_blank" rel="noopener">Upload payment slip</a>`) : actions}`;
+      ${buttons ? `<div class="bk-pay__actions${slip ? ' has-main' : ''}">${buttons}</div>` : ''}`;
   }
   const modal = $('[data-pay-modal]');
   const closeModal = () => { modal.hidden = true; };
@@ -902,7 +935,14 @@
   document.addEventListener('click', (e) => {
     const c = e.target.closest('[data-copy]');
     if (!c) return;
-    navigator.clipboard?.writeText(c.dataset.copy).then(() => { c.textContent = 'Copied'; setTimeout(() => { c.textContent = 'Copy'; }, 1500); }).catch(() => {});
+    const shown = () => { c.textContent = 'Copied'; setTimeout(() => { c.textContent = 'Copy'; }, 1500); };
+    const fallback = () => { // no clipboard API (an http page): select a temporary field and copy
+      const t = document.createElement('textarea');
+      t.value = c.dataset.copy; t.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(t); t.select();
+      try { if (document.execCommand('copy')) shown(); } catch { /* nothing more to try */ }
+      t.remove();
+    };
+    if (navigator.clipboard) navigator.clipboard.writeText(c.dataset.copy).then(shown).catch(fallback); else fallback();
   });
 
   function done() {
@@ -917,6 +957,7 @@
         ? `Your request for <b>${esc(b.place || b.roomName)}</b> ${range} is with us, and a copy is on its way to ${esc(b.guestEmail)}.`
         : `Your request for <b>${esc(b.packageLabel.toLowerCase())}</b> for ${plural(b.adults + b.children, 'guest')} ${range} is with us, and a copy is on its way to ${esc(b.guestEmail)}.`;
     $('[data-done-ref]').textContent = b.ref;
+    $('[data-done-ref-copy]').dataset.copy = b.ref;
     const inv = $('[data-done-invoice]');
     if (inv && b.invoiceUrl) { inv.href = b.invoiceUrl; inv.hidden = false; }
     const slipDone = $('[data-done-slip]');
@@ -927,12 +968,10 @@
       if (s) slipDone.innerHTML = s.ok ? '✓ We received your advance payment slip. We will check it and confirm your booking.'
         : `Your booking is in, but the payment slip didn't upload: ${esc(s.error)} <a href="${esc(`${b.invoiceUrl}#slip`)}" target="_blank" rel="noopener">Send it from your invoice</a>.`;
     }
-    $('[data-done-pay]').innerHTML = payHtml(b);
+    $('[data-done-pay]').innerHTML = payHtml(b, true);
     $('[data-pay-body]').innerHTML = payHtml(b);
     modal.hidden = false;
     setTimeout(() => { const btn = $('.bk-modal__card .btn', modal); if (btn) btn.focus(); }, 50);
-    const what = day ? `a ${b.packageLabel.toLowerCase()} on ${b.checkIn}` : b.kind === 'room' ? `${b.place || b.roomName} (${b.checkIn} to ${b.checkOut})` : `${b.packageLabel.toLowerCase()} for ${b.adults + b.children} (${b.checkIn} to ${b.checkOut})`;
-    $('[data-done-wa]').href = `https://wa.me/${String(site.whatsapp || '').replace(/\D/g, '')}?text=${encodeURIComponent(`Hello Top Mountain Resort! I just booked ${what}. My booking reference is ${b.ref}.`)}`;
     history.replaceState(null, '', '/book?done=1');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }

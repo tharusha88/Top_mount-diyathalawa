@@ -9,6 +9,7 @@ final class App
 {
     private const JSON_LIMIT = 51200;        // 50 KB max for JSON request bodies
     private const UPLOAD_LIMIT = 15728640;   // 15 MB max for photo uploads
+    private const VIDEO_PART_LIMIT = 5242880; // 5 MB max for each piece of a video (admin.js sends 4 MB)
 
     private static string $nonce = '';
 
@@ -60,7 +61,7 @@ final class App
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
             "font-src 'self' https://fonts.gstatic.com",
             "img-src 'self' data: blob:",
-            "media-src 'self'",
+            "media-src 'self' blob:", // blob: Admin → Photos & videos reads a chosen video before uploading it (its size and first frame)
             "frame-src 'self' https://www.google.com https://maps.google.com", // 'self': invoice and receipt previews in the admin panel
             "connect-src 'self'",
             "base-uri 'self'",
@@ -128,6 +129,7 @@ final class App
         // CSRF guard: state-changing API calls must be JSON and come from our own origin.
         if (!in_array($req->method, ['GET', 'HEAD', 'OPTIONS'], true)) {
             $isUpload = ($sub === '/admin/media' && $req->isImage())
+                || ($sub === '/admin/media/video' && $req->typeisHasBody() && $req->mime() === 'application/octet-stream') // a piece of a video
                 || ((strtolower(rtrim($sub, '/')) === '/admin/pos/slips' || preg_match('#^/invoice/[^/]+/[^/]+/slip/?$#i', $sub))
                     && $req->typeisHasBody() && ($req->isImage() || $req->mime() === 'application/pdf'));
             $hasBody = (int) ($req->header('content-length') ?? 0) > 0 || $req->header('transfer-encoding') !== null;
@@ -296,6 +298,40 @@ final class App
                 'guestEmail' => $b['guestEmail'],
                 'status' => $b['status'],
             ]], 201);
+            return true;
+        }
+
+        // "Check your booking": a guest types their booking reference OR the mobile number they booked with.
+        // A reference finds that booking; a number finds that number's bookings (newest first, at most 10).
+        if ($req->method === 'POST' && self::route('/booking-lookup', $p, $params)) {
+            if (!RateLimit::hit($req, $res, 'lookup', 10 * 60 * 1000, 10, 'Too many tries — please wait a few minutes or call us.')) return true;
+            $body = $req->body;
+            if (Js::truthy($body['website'] ?? null)) { $res->json(['error' => 'Invalid submission.'], 400); return true; } // honeypot
+            $q = trim((string) ($body['query'] ?? ''));
+            $found = [];
+            if (preg_match('/^[A-Za-z]{2,5}\s*-?\s*[A-Za-z0-9]{4,10}$/', $q) && preg_match('/[A-Za-z]/', $q)) {
+                $ref = strtoupper((string) preg_replace('/\s+/', '', $q));
+                if (!str_contains($ref, '-')) $ref = substr($ref, 0, 3) . '-' . substr($ref, 3); // "TMR2LCWDC" → "TMR-2LCWDC"
+                $b = Bookings::getByRef($ref);
+                if ($b && $b['source'] !== 'block') $found[] = $b;
+            } else {
+                $digits = (string) preg_replace('/\D/', '', $q);
+                if (strlen($digits) >= 9) {
+                    $rows = Db::all("SELECT b.ref FROM bookings b WHERE b.source != 'block'
+                        AND REPLACE(REPLACE(REPLACE(REPLACE(b.guest_phone, ' ', ''), '-', ''), '+', ''), '(', '') LIKE ?
+                        ORDER BY b.check_in DESC LIMIT 10", ['%' . substr($digits, -9)]);
+                    foreach ($rows as $r) if ($b = Bookings::getByRef($r['ref'])) $found[] = $b;
+                }
+            }
+            if (!$found) { $res->json(['error' => 'We could not find a booking with that reference or mobile number. Please check it, or call us.'], 404); return true; }
+            $res->json(['bookings' => array_map(fn ($b) => [
+                'ref' => $b['ref'],
+                'status' => $b['status'],
+                'what' => $b['kind'] === 'room' ? (string) ($b['roomName'] ?? '') : (string) $b['packageLabel'],
+                'checkIn' => $b['checkIn'],
+                'checkOut' => $b['checkOut'],
+                'invoiceUrl' => Docs::invoiceUrl($b),
+            ], $found)]);
             return true;
         }
 
@@ -601,18 +637,39 @@ final class App
             $bytes = $req->isImage() ? $req->readRaw(self::UPLOAD_LIMIT) : '';
             if ($bytes === '') { $res->json(['error' => 'No image received.'], 400); return; }
             try {
-                $key = Media::addUpload($bytes, rawurldecode((string) ($req->header('x-filename') ?? 'photo')));
+                // ?grade=0: a video's cover frame, kept as it is so it matches the video
+                $key = Media::addUpload($bytes, rawurldecode((string) ($req->header('x-filename') ?? 'photo')), $req->q('grade') !== '0');
                 $res->json(['key' => $key, 'item' => Media::get()[$key]], 201);
             } catch (\RuntimeException $e) {
                 $res->json(['error' => $e->getMessage()], 400);
             }
             return;
         }
+        // a video arrives in pieces (?upload=<id>&offset=<bytes so far>), each under the host's upload limit
+        if ($m === 'POST' && self::route('/media/video', $p)) {
+            $bytes = $req->readRaw(self::VIDEO_PART_LIMIT);
+            try {
+                $res->json(['size' => Media::addVideoPart((string) $req->q('upload'), (int) $req->q('offset'), $bytes)]);
+            } catch (\RuntimeException $e) {
+                $res->json(['error' => $e->getMessage()], 400);
+            }
+            return;
+        }
+
+        // ---------- the home page's photos and videos (Admin → Photos & videos) ----------
+        if ($get && self::route('/home-media', $p)) { $res->json(['media' => HomeMedia::admin()]); return; }
+        if ($m === 'PATCH' && self::route('/home-media', $p)) { $res->json(['media' => HomeMedia::save($body)]); return; }
+        // a finished upload goes on the page: {upload, slot, role: main | phone, poster}
+        if ($m === 'POST' && self::route('/home-media/video', $p)) {
+            $poster = $body['poster'] ?? null;
+            $res->json(['media' => HomeMedia::setVideo(Js::str($body['slot'] ?? ''), Js::str($body['role'] ?? ''), Js::str($body['upload'] ?? ''), is_string($poster) ? $poster : null)]);
+            return;
+        }
         if ($m === 'DELETE' && self::route('/media/:key', $p, $params)) {
             $key = $params['key'];
             $inUse = array_column(array_filter(Bookings::listRooms(true), fn ($r) => in_array($key, $r['images'], true)), 'name');
             if ($inUse) { $res->json(['error' => 'This photo is used by: ' . implode(', ', $inUse) . '. Remove it from those rooms first.'], 409); return; }
-            if (Site::uses($key)) { $res->json(['error' => 'This photo is on the home page. Change it in Admin → Website first.'], 409); return; }
+            if (Site::uses($key)) { $res->json(['error' => 'This photo is on the home page. Change it in Admin → Photos & videos first.'], 409); return; }
             if (!Media::removeUpload($key)) { $res->json(['error' => 'Only photos you uploaded can be deleted.'], 400); return; }
             $res->json(['ok' => true]);
             return;
@@ -847,7 +904,7 @@ final class App
         if (preg_match('#^/users(/|$)#', $p)) return ['users'];
         if (preg_match('#^/finance(/|$)#', $p)) return ['finance'];
         if (preg_match('#^/coupons(\.csv)?(/|$)#', $p)) return ['coupons'];
-        if (preg_match('#^/(site|media|whatsapp|notify-emails|reminders|chatbot|calendar-feed|test-email)(/|$)#', $p)) return ['site'];
+        if (preg_match('#^/(site|media|home-media|whatsapp|notify-emails|reminders|chatbot|calendar-feed|test-email)(/|$)#', $p)) return ['site'];
         if (preg_match('#^/(setup|packages|printing)(/|$)#', $p)) return ['setup'];
         if (preg_match('#^/rooms(/|$)#', $p)) return $read ? ['bookings'] : ['setup'];
         if (preg_match('#^/(rates|categories)(/|$)#', $p)) return ['setup'];
@@ -1053,7 +1110,8 @@ final class App
             'groupMax' => ['adults' => Bookings::MAX_GROUP_ADULTS, 'children' => Bookings::MAX_GROUP_CHILDREN],
         ];
         // the home page loads its own photos (js/data/media.js); its booking form asks /api/availability
-        if ($p === '/') { self::renderPage($res, 'index.html', ['media' => [], 'mapLink' => Config::location()['place'], 'chat' => Chatbot::webBoot()]); return; }
+        // homeMedia: the photos and videos changed in Admin → Photos & videos (media.js applies them)
+        if ($p === '/') { self::renderPage($res, 'index.html', ['media' => [], 'mapLink' => Config::location()['place'], 'chat' => Chatbot::webBoot(), 'homeMedia' => HomeMedia::boot()]); return; }
         if (self::route('/book', $p)) {
             $b = $booking();
             $keys = array_merge(['cabana-hillside', 'estate-aerial', 'dining-deck'], array_map(fn ($r) => $r['images'][0] ?? '', $b['rooms']));
@@ -1226,6 +1284,10 @@ final class App
             $hero = Site::hero();
             $tokens['home.heroPreload'] = $hero ? self::heroPreload($hero[0]['key']) : '';
             $tokens['home.heroCaption'] = self::esc($hero[0]['caption'] ?? '');
+            // the photos placed in the page itself (Admin → Photos & videos): the film's cover is its button
+            $tokens['media.filmPoster'] = self::esc(HomeMedia::poster('film') ?: 'estate-golden');
+            $tokens['media.filmLength'] = self::esc(HomeMedia::filmLength());
+            $tokens['media.book'] = self::esc(HomeMedia::book());
             // what readers that don't run the scripts see too (search engines, AI assistants):
             // the parts render.js draws, and the questions and answers (Content, Seo)
             $tokens += Content::homeTokens() + ['home.faq' => Seo::faqHtml()];

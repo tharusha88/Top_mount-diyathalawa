@@ -34,7 +34,9 @@ $add = function (string $dir, string $prefix, ?callable $keep = null) use (&$fil
         $files[$f->getPathname()] = ltrim("$prefix/$rel", '/');
     }
 };
-$add('public', '');                                                    // web root → top level of public_html
+// web root → top level of public_html. Never the admin panel's uploads (the photo library list,
+// its photos and videos): extracting an update over the live site would replace or orphan the live ones.
+$add('public', '', fn ($r) => !preg_match('#^media/(manifest\.json$|upload-|video/)#', $r));
 $add('app', 'app');                                                    // application code (private)
 $add('views', 'views', fn ($r) => str_ends_with($r, '.html') || $r === '.htaccess');
 $files["$root/hosting/DEPLOY.md"] = 'DEPLOY.md';

@@ -1,4 +1,4 @@
-/* Invoice and receipt pages: the "Print / save as PDF" button, and ?print=1 prints on open.
+/* Invoice and receipt pages: the "Download PDF" and "Print" buttons, and ?print=1 prints on open.
    What prints in the page margins (Docs::pageCss): the date and time of printing on the left and
    who issued it on the right — no page title, link or page numbers from the browser.
    The admin panel and the POS call YDDoc.marks(name) to put the staff member's name on an invoice. */
@@ -27,6 +27,25 @@
   window.addEventListener('beforeprint', () => marks());
 
   document.addEventListener('click', (e) => { if (e.target.closest('[data-print]')) { marks(); window.print(); } });
+
+  // "Download PDF": the document made into a PDF file named after its reference number (e.g. "Reservation invoice TMR-2LCWDC.pdf")
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-download]');
+    if (!btn || btn.disabled) return;
+    const no = (document.querySelector('.doc__no b') || {}).textContent || 'document';
+    const kind = (document.querySelector('.doc__no small') || {}).textContent || '';
+    const name = `${kind.trim() ? kind.trim() + ' ' : ''}${no.trim()}.pdf`.replace(/[\/:*?"<>|]+/g, '-');
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Preparing PDF…';
+    try {
+      if (!window.YDPdf) throw new Error('PDF is not available.');
+      const u = new URL(location.href); u.searchParams.delete('print'); u.searchParams.delete('embed');
+      window.YDPdf.download(await window.YDPdf.fromUrl(u.pathname + u.search), name);
+    } catch (ex) {
+      alert('The PDF could not be made here. Use Print and choose “Save as PDF” instead.');
+    }
+    btn.disabled = false; btn.textContent = label;
+  });
 
   // ---------- the guest sends their payment slip (invoice page: Docs::slipBox) ----------
   const slipBox = document.querySelector('[data-slip-form]');

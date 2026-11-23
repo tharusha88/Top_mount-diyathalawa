@@ -180,7 +180,8 @@ views/               page templates: index.html (the home page), book.html, admi
 app/                 PHP backend (bookings, POS, admin API, email, settings)
   App.php            routes, security headers, CSRF guard, pages and the JSON API
   RoomsSeed.php      Top Mountain's 20 rooms and the sample options, extras and POS menu
-  Media.php          photo library: uploads plus the website's own photos (read-only)
+  Media.php          photo library: uploads plus the website's own photos (read-only), video uploads
+  HomeMedia.php      the home page's photos and videos as changed in Admin → Photos & videos
 data/                SQLite database, email outbox, login key (created automatically, private)
 scripts/             build.php (hosting zip), seed-demo.php (demo bookings)
 tests/               booking-rule tests and their fixed sample data
@@ -198,7 +199,22 @@ set in Admin → Website (or `.env`) replace them on the home page (`render.js`)
 
 ## Changing photos or videos
 
-No page or script refers to a media file path directly. Everything goes through a key defined in
+**From the admin panel (no build needed):** Admin → Photos & videos lists every photo and video on
+the home page: the three videos (the hero video at the top, Discover, the film) with their cover photos and
+phone versions, the highlights, the rooms gallery, experiences, dining, the booking section and the
+places nearby. Each can take any photo from the library or a new upload, and “Use the original”
+puts the build's own back. Videos must be MP4 with H.264 (the server reads the file and turns away
+HEVC, AV1 and the rest); they upload in 4 MB pieces, and the cover photo is made from the
+video's first frame in the browser, uncoloured so it matches the video. Uploaded videos are used as
+they are: no AV1 copy, no smaller sizes and no play-then-reverse loop, so keep them small.
+
+How it fits together: the choices are settings (`home_photos`, `home_videos`), laid over
+`content.js` and `media.js` by `app/HomeMedia.php`. The server uses them for the page it draws
+and the search tags (`Content::get()`, `Content::media()`), and `window.BOOT.homeMedia` hands them to
+`media.js`, which applies them before anything draws. Uploads live in `public/media/` (photos) and
+`public/media/video/`, which the hosting zip never contains.
+
+**In the build (the originals):** no page or script refers to a media file path directly. Everything goes through a key defined in
 `tools/media.config.json`. Every website photo is also in the admin's photo library (Admin →
 Rooms → *Choose / upload photos*), so rooms can use any of them.
 

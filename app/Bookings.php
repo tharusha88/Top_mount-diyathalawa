@@ -1312,9 +1312,9 @@ final class Bookings
         $guestIdNo = self::idNo($in['guestIdNo'] ?? null);
         if ($guestIdNo === null) throw new BookingError('Please check the NIC or passport number.');
         if (!$admin) {
-            if (!self::isEmail($guestEmail)) throw new BookingError('Please enter a valid email address.');
+            // email and NIC / passport are optional for guests (checked only when given)
+            if ($guestEmail !== '' && !self::isEmail($guestEmail)) throw new BookingError('Please enter a valid email address, or leave it empty.');
             if (strlen((string) preg_replace('/\D/', '', $guestPhone)) < 7) throw new BookingError('Please enter a valid phone number.');
-            if ($guestIdNo === '') throw new BookingError('Please enter your NIC or passport number.');
         } elseif ($guestEmail !== '' && !self::isEmail($guestEmail)) {
             throw new BookingError('That email address does not look right.');
         }

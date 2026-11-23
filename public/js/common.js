@@ -251,6 +251,36 @@
     on();
   }
 
+  // ---------- booking summary column: sticky both ways ----------
+  // The summary (book + confirm pages) is position: sticky. When it is taller than the window, a fixed `top`
+  // would hide its bottom (the total) until the end of the page, so `top` follows the scroll instead:
+  // scrolling down, it moves with the page until its bottom is in view; scrolling up, until its top is.
+  function initStickySummary() {
+    const box = $('.bk__summary');
+    if (!box) return;
+    const GAP = 20;
+    let lastY = window.scrollY, top = null, minTop = 0, maxTop = 0, on = false;
+    const place = (delta) => {
+      const t = Math.max(minTop, Math.min(maxTop, (top ?? maxTop) - delta));
+      if (t !== top) { top = t; box.style.top = `${t}px`; }
+    };
+    const measure = () => {
+      on = getComputedStyle(box).position === 'sticky'; // static on tablets and phones
+      if (!on) { box.style.top = ''; top = null; return; }
+      maxTop = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--nav-h')) || 0) + GAP;
+      minTop = Math.min(maxTop, window.innerHeight - box.offsetHeight - GAP);
+      place(0);
+    };
+    window.addEventListener('scroll', () => {
+      const y = window.scrollY, delta = y - lastY;
+      lastY = y;
+      if (on) place(delta);
+    }, { passive: true });
+    window.addEventListener('resize', measure);
+    if ('ResizeObserver' in window) new ResizeObserver(measure).observe(box); // a room chosen, prices shown…
+    measure();
+  }
+
   // ---------- generic stepper ----------
   function stepper(el, onChange) {
     const out = $('output', el);
@@ -286,6 +316,7 @@
     initFireflies();
     initSound();
     initWhatsApp();
+    initStickySummary();
     hideEmptyLinks();
     const done = () => document.body.classList.add('is-loaded');
     if (document.readyState === 'complete') setTimeout(done, 350);

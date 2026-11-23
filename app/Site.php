@@ -209,6 +209,7 @@ final class Site
     /** Is a photo used on the home page? (so it isn't deleted from the library) */
     public static function uses(string $key): bool
     {
+        if (HomeMedia::uses($key)) return true; // Admin → Photos & videos
         if (in_array($key, self::images(), true)) return true;
         foreach ([self::hero(), self::gallery()] as $list) foreach ($list as $x) if ($x['key'] === $key) return true;
         return false;

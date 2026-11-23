@@ -150,8 +150,11 @@ login, and that private files can't be downloaded. Fix anything red, then reload
 - **POS:** `https://yourdomain.com/pos` on the front-desk tablet or phone (sign in with an admin
   account). Its menu is edited in Admin → POS menu.
 - **Contact details / email settings:** edit `.env` in File Manager.
+- **Home page photos and videos:** Admin → Photos & videos. Pick any photo from the library or upload
+  one; videos are MP4 (H.264) and upload in 4 MB pieces, so the host's upload limit doesn't cap them.
 - **Updating the site files later:** upload the changed files over the old ones. The bookings
-  live in MySQL, so they are not affected.
+  live in MySQL, so they are not affected, and the zip never contains `media/manifest.json`,
+  `media/upload-*` or `media/video/`, so the photos and videos uploaded in the admin panel stay too.
 
 ## Search engines (Google, Bing) and AI assistants
 
@@ -194,7 +197,8 @@ reviews section appears by itself once there is one. Never add reviews or rating
 All bookings are in the MySQL database. Back it up regularly with **phpMyAdmin → select the
 database → Export → Go** (keep the `.sql` file safe), or use your host's backup tool (Hostinger:
 *Files → Backups*, which includes databases). Photos uploaded in the admin panel are in `media/`
-(files starting with `upload-`).
+(files starting with `upload-`, listed in `media/manifest.json`) and videos in `media/video/`: back
+these up too.
 
 ## Troubleshooting
 
@@ -206,5 +210,6 @@ database → Export → Go** (keep the `.sql` file safe), or use your host's bac
 | Home page works but `/book` or `/admin/` shows 404 | `.htaccess` is missing. Re-upload it (it is a hidden file). |
 | No emails arrive | `/check.php` tests the email login. Try `SMTP_PORT=587` with `SMTP_SECURE=false`. While `SMTP_HOST` is empty, emails are saved in `data/outbox/`. |
 | Photo upload fails / "too large" | PHP options: `upload_max_filesize` and `post_max_size` = 20M, `memory_limit` = 256M. |
+| Video upload fails / "No video arrived" | The PHP option `post_max_size` must be at least 8M (each piece is 4 MB). The `data/` folder must be writable (pieces wait in `data/uploads/`) and so must `media/`. |
 | Admin login keeps logging out | Use **https://** (`APP_ENV=production` requires it). |
 | You turned on a CDN (Hostinger CDN, Cloudflare) | Set `TRUST_PROXY=true` in `.env`. |

@@ -13,7 +13,7 @@ window.YDSITE = function (h) {
   const thumb = (key) => (hasPhoto(key) ? `<img src="${img(key, 640)}" alt="" loading="lazy">` : '<span class="ph-missing">Photo missing</span>');
 
   async function viewWebsite() {
-    setHead('Website', 'The contact details, map and photos on the home page. Changes show on the website straight away.');
+    setHead('Website', 'The contact details and map on the home page. Changes show on the website straight away. Its photos and videos are in Photos & videos.');
     load((await api('/site')).site);
     // Top Mountain: the home page's photos come from the media build (tools/media.config.json), so only
     // the cards that change something on the website are shown
