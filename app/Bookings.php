@@ -804,7 +804,7 @@ final class Bookings
         return array_map(function ($r) use ($nights, $left, $busy) {
             $free = !isset($busy[$r['id']]);
             $fits = $left === null || $left >= $r['capacity'];
-            return $r + ['available' => $free && $fits, 'free' => $free, 'fits' => $fits, 'nights' => $nights, 'total' => $r['price'] * $nights];
+            return $r + ['available' => $free && $fits, 'free' => $free, 'fits' => $fits, 'capacityLeft' => $left, 'nights' => $nights, 'total' => $r['price'] * $nights];
         }, self::listRooms());
     }
 
@@ -1124,7 +1124,7 @@ final class Bookings
     }
 
     /** [adults, children]: rooms need no guest numbers (admins may note them); per person needs them. */
-    private static function guestCounts(array $in, string $kind, array $rooms, bool $isBlock): array
+    private static function guestCounts(array $in, string $kind, array $rooms, bool $isBlock, ?array $whole = null): array
     {
         if ($isBlock) return [0, 0];
         if ($kind === 'event') {
@@ -1137,7 +1137,7 @@ final class Bookings
             $a = self::int($in['adults'] ?? 0, 0, self::MAX_GROUP_ADULTS);
             $c = self::int($in['children'] ?? 0, 0, self::MAX_GROUP_CHILDREN);
             if ($a === null || $c === null) throw new BookingError('Please check the number of guests.');
-            $cap = self::roomsCapacity($rooms);
+            $cap = self::guestCapacity($rooms, $whole);
             if ($rooms && $a + $c > $cap) {
                 throw new BookingError((count($rooms) === 1 ? "{$rooms[0]['name']} sleeps" : 'These rooms sleep') . " up to $cap guest" . ($cap === 1 ? '' : 's') . '.');
             }
@@ -1183,6 +1183,14 @@ final class Bookings
 
     /** How many guests these rooms sleep, and what they cost a night (price list) with this meal plan. */
     private static function roomsCapacity(array $rooms): int { return array_sum(array_column($rooms, 'capacity')); }
+    /** Guests these rooms take: a whole category counts at its own advertised capacity (when set), the other rooms at theirs. */
+    private static function guestCapacity(array $rooms, ?array $whole = null): int
+    {
+        $wholeCap = $whole ? (int) ($whole['whole']['capacity'] ?? 0) : 0;
+        if ($wholeCap <= 0) return self::roomsCapacity($rooms);
+        $others = array_filter($rooms, fn ($r) => ($r['categoryId'] ?? null) !== $whole['id']);
+        return $wholeCap + self::roomsCapacity($others);
+    }
     public static function roomsPrice(array $rooms, string $plan = 'RO', ?array $whole = null): int
     {
         $sum = $whole ? self::wholePrice($whole, $plan) : 0; // a whole category: one price for its rooms
@@ -1295,7 +1303,7 @@ final class Bookings
                 }
             }
         }
-        [$adults, $children] = self::guestCounts($in, $kind, $rooms, $isBlock);
+        [$adults, $children] = self::guestCounts($in, $kind, $rooms, $isBlock, $whole);
         // the website can't book days the whole resort is closed (staff can — e.g. the private booking itself)
         if (!$admin) Closures::assertOpen($checkIn, $checkOut, $kind);
 
@@ -1494,7 +1502,9 @@ final class Bookings
                 $roomIds = array_column($merged, 'id');
             } elseif ($wantWhole) {
                 $cat = self::getCategory($wantWhole);
-                $catIds = $cat && $cat['whole'] ? array_column(self::categoryRooms($cat['id']), 'id') : [];
+                // a whole option switched off since keeps its price on this booking (as in priceLines)
+                if ($cat && !$cat['whole']) $cat = ['whole' => ['code' => '', 'label' => 'Whole', 'capacity' => 0, 'prices' => $cat['wholePrices']]] + $cat;
+                $catIds = $cat ? array_column(self::categoryRooms($cat['id']), 'id') : [];
                 if ($catIds && !array_diff($catIds, $roomIds)) $whole = $cat; // else a room of it left: priced room by room
             }
             if (!$roomIds) throw new BookingError('Please choose a room for this booking.');

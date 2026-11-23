@@ -53,7 +53,12 @@
   const people = () => state.adults + state.children;
   const MAX_ROOMS = 10; // Bookings::MAX_ROOMS
   const isPicked = (slug) => state.rooms.some((r) => r.slug === slug);
-  const roomsCap = () => state.rooms.reduce((sum, r) => sum + r.capacity, 0);
+  // a whole villa sleeps its advertised capacity (when set), the other rooms what each sleeps
+  const roomsCap = () => {
+    const w = state.whole;
+    const wc = w && w.whole ? Number(w.whole.capacity) || 0 : 0;
+    return state.rooms.reduce((sum, r) => sum + (wc && r.categoryId === w.id ? 0 : r.capacity), wc);
+  };
   // ---------- meal plans and whole categories (the rate sheet) ----------
   const planOf = (code) => PLANS.find((p) => p.code === code) || PLANS[0];
   /** a room's price a night with a meal plan (0 = not offered with it) */
@@ -606,10 +611,12 @@
     /** a category's "whole villa" card: every room of it, at one price — only when all of them are free */
     const wholeCard = (c) => {
       const mine = list.filter((r) => r.categoryId === c.id);
-      const free = mine.length === catRooms(c).length && mine.every((r) => r.available);
+      const left = mine.length ? mine[0].capacityLeft : null; // hotel capacity left on these nights (null = no limit)
+      const together = left == null || left >= mine.reduce((s, r) => s + r.capacity, 0); // all its rooms at once must fit too
+      const free = mine.length === catRooms(c).length && mine.every((r) => r.available) && together;
       const price = wholePrice(c);
       const on = state.whole && state.whole.id === c.id;
-      const note = !free ? 'Some of its rooms are booked on these nights' : !price ? `No ${planName.toLowerCase()} rate` : `${plural(mine.length, 'room')} · sleeps ${c.whole.capacity || mine.reduce((s, r) => s + r.capacity, 0)}`;
+      const note = !free ? (together ? 'Some of its rooms are booked on these nights' : "We don't have space for all of its rooms on these nights") : !price ? `No ${planName.toLowerCase()} rate` : `${plural(mine.length, 'room')} · sleeps ${c.whole.capacity || mine.reduce((s, r) => s + r.capacity, 0)}`;
       return `<article class="bk-whole${free && price ? '' : ' is-off'}${on ? ' is-selected' : ''}">
         <div><span class="bk-room__type">${esc(c.whole.code || 'Whole')}</span><h3>${esc(wholeName(c))}</h3><p>${esc(note)}</p></div>
         <div class="bk-room__side">

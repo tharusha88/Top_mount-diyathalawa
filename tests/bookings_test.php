@@ -1216,6 +1216,11 @@ test('the rate sheet: a price per meal plan for each room, and a category can be
     eq([$w['wholeCategory'], $w['totalAmount']], [null, 2 * 21000]);
     $w = B::updateBooking($w['id'], ['wholeCategory' => $cat['id']]);
     eq([count($w['rooms']), $w['totalAmount']], [2, 80000]);
+    // its whole option switched off later: an unrelated edit keeps the booking's whole price
+    B::saveCategory($cat['id'], ['wholeLabel' => '']);
+    $w = B::updateBooking($w['id'], ['adminNotes' => 'kept whole']);
+    eq([$w['wholeCategoryId'], $w['totalAmount']], [$cat['id'], 80000]);
+    B::saveCategory($cat['id'], ['wholeLabel' => 'Whole Canopy']);
     // a category with rooms can't be deleted; the public sheet shows it with the meal plans
     throws(fn () => B::deleteCategory($cat['id']), '/Move the rooms/');
     $pub = B::rateSheet(true);
